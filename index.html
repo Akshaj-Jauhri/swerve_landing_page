@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- AOS CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>6-Section Website</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    html, body {
+      scroll-behavior: smooth;
+      overflow-x: hidden;
+    }
+
+    .navbar {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 50px;
+      z-index: 1000;
+      background: transparent;
+    }
+
+    .logo {
+      color: white;
+      font-weight: 700;
+      font-size: 1.5rem;
+      text-decoration: none;
+    }
+
+    .nav-links a {
+      color: white;
+      margin-left: 30px;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 1.2rem;
+      transition: color 0.3s ease;
+    }
+
+    .nav-links a:hover {
+      color: #ddd;
+    }
+
+    .section {
+      height: 100vh;
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 2rem;
+      opacity: 0;
+      animation: fadeIn 1.2s ease forwards;
+    }
+
+    .modal {
+    display: none; /* Hidden by default */
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.8);
+  }
+
+  .modal-content {
+    background-color: white;
+    margin: 10% auto;
+    padding: 30px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 400px;
+    font-family: 'Poppins', sans-serif;
+    color: black;
+    position: relative;
+  }
+
+  .modal-content input {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+
+  .close {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 28px;
+    font-weight: bold;
+    color: black;
+    cursor: pointer;
+  }
+
+
+    @keyframes fadeIn {
+      to {
+        opacity: 1;
+      }
+    }
+
+    #section1 { background-image: url('Section_1.png'); animation-delay: 0s; }
+    #section2 { background-image: url('Section_2.png'); animation-delay: 0.2s; }
+    #section3 { background-image: url('Section_3.png'); animation-delay: 0.4s; }
+    #section4 { background-image: url('Section_4.png'); animation-delay: 0.6s; }
+    #section5 { background-image: url('Section_5.png'); animation-delay: 0.8s; }
+    #section6 { background-image: url('Section_6.png'); animation-delay: 1s; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<div class="navbar">
+    <a href="#section1" class="logo">
+      <img src="logo_white.png" alt="Swerve Logo" style="height: 40px;" />
+    </a>
+    <div class="nav-links">
+      <a href="#section1">Home</a>
+      <a href="#section2">About Us</a>
+      <a href="#section6">Contact Us</a>
+    </div>
+  </div>
+
+  <!-- Sections -->
+  <div id="section1" class="section">
+    <div style="text-align: center;">
+      <img src="SWERVE-secindary-white.png" alt="Swerve Logo" style="height: 1500px; max-width: 100%;" />
+      <!--<p style="margin-bottom: 400px; font-size: 4.5rem; color: white; font-family: 'Poppins', sans-serif;">
+        Built by AI. Trusted by Analysts.
+      </p>-->
+    </div>
+  </div>
+
+  <div id="section2" class="section"">
+    <div style="text-align: center; max-width: 2500px; padding: 0 20px;">
+      <h1>
+        Making analyst reports faster, smarter, and 100% caffeine-free.
+      </h1>
+      <p style="margin-top: 20px; font-size: 2rem; font-weight: 300; color: white; line-height: 1.6;">
+        We harness the power of AI to generate analyst-grade reports—faster, smarter, and with unmatched precision.
+        Say goodbye to manual drudgery and hello to seamless, automated insights that save time and elevate performance.
+      </p>
+    </div>
+  </div>
+  
+
+  <div id="section3" class="section">
+    <div style="text-align: center;">
+      <h1 style="font-family: 'Poppins', sans-serif; font-size: 4rem; color: white;">Trusted By</h1>
+      <div style="margin-top: 30px; display: flex; justify-content: center; align-items: center; gap: 60px; flex-wrap: wrap;">
+        <img src="cerno.jpg" alt="Cerno Capital" style="height: 160px;" />
+        <img src="equirus.webp" alt="Equirus" style="height: 160px;" />
+      </div>
+    </div>
+  </div>
+  
+
+  <div id="section4" class="section">
+    <div style="text-align: center; max-width: 2500px; padding: 0 20px;">
+      <p style="font-size: 3.3rem; color: white; font-family: 'Poppins', sans-serif; font-weight: 300; line-height: 1.6;">
+        Over <span style="font-weight: 700; font-size: 4rem;">500</span> reports each quarter,
+        powered by <span style="font-weight: 700; font-size: 4rem;">100+</span> analysts and
+        <span style="font-weight: 700; font-size: 4rem;">1</span> very smart AI.
+      </p>
+    </div>
+  </div>
+  
+
+  <div id="section5" class="section">
+    <div style="text-align: center; max-width: 2500px; padding: 0 20px;">
+      <h1>
+        We'll handle the reports, you take the credit.
+      </h1>
+    </div>
+  </div>
+
+
+  <div id="section6" class="section">
+    <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+      
+      <button onclick="openModal()" style="
+        margin-top: 100px;
+        background-color: white;
+        color: black;
+        border: none;
+        padding: 20px 60px;
+        font-size: 1rem;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 600;
+        border-radius: 30px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      " onmouseover="this.style.backgroundColor='#ddd'" onmouseout="this.style.backgroundColor='white'">
+        Join Us
+      </button>
+  
+      <div style="margin-top: 20px; display: flex; gap: 20px; justify-content: center; align-items: center;">
+        <a href="https://www.instagram.com" target="_blank">
+          <img src="insta2.png" alt="Instagram" style="height: 96px; width: 96px; object-fit: contain; border-radius: 8px;" />
+        </a>
+        <a href="https://www.linkedin.com" target="_blank">
+          <img src="li.png" alt="LinkedIn" style="height: 96px; width: 96px; object-fit: contain;" />
+        </a>
+      </div>
+  
+    </div>
+  </div>
+  
+
+  <!-- Join Us Modal -->
+  <div id="joinModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h2 style="font-family: 'Poppins', sans-serif;">Join Us</h2>
+      <form action="https://formsubmit.co/kyoya1210@gmail.com" method="POST" style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
+        <input type="text" placeholder="Company Name" required />
+        <input type="tel" placeholder="Contact Number" required />
+        <input type="email" placeholder="Email Address" required />
+        <button type="submit" style="
+          background-color: black;
+          color: white;
+          padding: 10px;
+          border: none;
+          font-family: 'Poppins', sans-serif;
+          font-weight: 600;
+          cursor: pointer;
+          border-radius: 5px;
+        ">Submit</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function openModal() {
+      document.getElementById("joinModal").style.display = "block";
+    }
+  
+    function closeModal() {
+      document.getElementById("joinModal").style.display = "none";
+    }
+  
+    // Optional: Close modal on click outside
+    window.onclick = function(event) {
+      const modal = document.getElementById("joinModal");
+      if (event.target === modal) {
+        modal.style.display = "none";
+      }
+    };
+  </script>
+  
+  <!-- AOS JS -->
+  <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
+  <script>
+    AOS.init();
+  </script>
+
+</body>
+</html>
