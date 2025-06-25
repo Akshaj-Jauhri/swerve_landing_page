@@ -148,6 +148,41 @@
       text-align: center;
     }
 
+    /* Video container styles - CRITICAL FOR iOS */
+    .video-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: -1;
+    }
+
+    .background-video {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      min-width: 100%;
+      min-height: 100%;
+      width: auto;
+      height: auto;
+      transform: translate(-50%, -50%);
+      object-fit: cover;
+      z-index: -1;
+    }
+
+    /* iOS-specific video fixes */
+    @supports (-webkit-appearance: none) {
+      .background-video {
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+        object-fit: cover !important;
+      }
+    }
+
     .modal {
       display: none;
       position: fixed;
@@ -199,12 +234,6 @@
     #section4 { background-image: url('Section_4.png'); animation-delay: 0.6s; }
     #section5 { animation-delay: 0.8s; }
     #ContactUs { background-image: url('Section_6_1.png'); animation-delay: 1s; }
-
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
 
     /* Responsive styles for different screen sizes */
     
@@ -537,23 +566,26 @@
     </div>
   </div>
 
-<!-- Section 2 -->
-<div id="AboutUs" class="section" style="position: relative; overflow: hidden;" onmouseenter="playContactUsVideo()">
+<!-- Section 2 - FIXED FOR iOS -->
+<div id="AboutUs" class="section" style="position: relative; overflow: hidden;">
   
-  <!-- Video Background -->
-  <video id="ContactUs-video" muted playsinline preload="auto" style="
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    z-index: -1;
-    pointer-events: none;
-  ">
-    <source src="coffee1.mp4" type="video/mp4" />
-    Your browser does not support the video tag.
-  </video>
+  <!-- Video Background Container -->
+  <div class="video-container">
+    <video 
+      id="aboutus-video" 
+      class="background-video"
+      muted 
+      playsinline 
+      preload="metadata"
+      webkit-playsinline="true"
+      x-webkit-airplay="allow"
+      onloadstart="this.muted = true"
+      oncanplay="handleVideoCanPlay(this)"
+    >
+      <source src="coffee1.mp4" type="video/mp4" />
+      Your browser does not support the video tag.
+    </video>
+  </div>
 
   <!-- Section Content -->
   <div class="section-content" style="text-align: center; max-width: 1200px; padding: 0 20px; z-index: 1; position: relative;">
@@ -585,26 +617,30 @@
   </div>
 </div>
 
-<div id="section5" class="section" style="position: relative; overflow: hidden;"
-onmouseenter="playSection5Video()">
+<!-- Section 5 - FIXED FOR iOS -->
+<div id="section5" class="section" style="position: relative; overflow: hidden;">
 
-  <!-- Video Background -->
-  <video id="section5-video" muted playsinline style="
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: -1;
-  ">
-  <source src="videoplayback.mp4" type="video/mp4" />
-  Your browser does not support the video tag.
-  </video>
+  <!-- Video Background Container -->
+  <div class="video-container">
+    <video 
+      id="section5-video" 
+      class="background-video"
+      muted 
+      playsinline 
+      preload="metadata"
+      webkit-playsinline="true"
+      x-webkit-airplay="allow"
+      onloadstart="this.muted = true"
+      oncanplay="handleVideoCanPlay(this)"
+    >
+      <source src="videoplayback.mp4" type="video/mp4" />
+      Your browser does not support the video tag.
+    </video>
+  </div>
 
   <!-- Section Content -->
   <div class="section-content" style="text-align: center; max-width: 1200px; padding: 0 20px; z-index: 1; position: relative;">
-  <h1>We'll handle the reports, you take the credit.</h1>
+    <h1>We'll handle the reports, you take the credit.</h1>
   </div>
 </div>
 
@@ -700,11 +736,17 @@ onmouseenter="playSection5Video()">
     link.addEventListener('click', closeMobileMenu);
   });
 
-  // Scroll-triggered video playback for mobile
+  // iOS Safari detection
+  function isIOSSafari() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
+
+  // Mobile device detection
   function isMobileDevice() {
     return window.innerWidth <= 991;
   }
 
+  // Check if element is in viewport
   function isElementInViewport(el, threshold = 0.3) {
     const rect = el.getBoundingClientRect();
     const windowHeight = window.innerHeight || document.documentElement.clientHeight;
@@ -713,67 +755,130 @@ onmouseenter="playSection5Video()">
     return visibleHeight >= elementHeight * threshold;
   }
 
-  function handleScrollVideoPlayback() {
-    if (!isMobileDevice()) return;
+  // Handle video when it can play - iOS FIX
+  function handleVideoCanPlay(video) {
+    if (isIOSSafari()) {
+      // For iOS, ensure video is ready and force muted state
+      video.muted = true;
+      video.setAttribute('muted', '');
+      video.setAttribute('playsinlines', '');
+      
+      // Try to play immediately on iOS
+      setTimeout(() => {
+        if (video.paused) {
+          video.play().catch(e => {
+            console.log('Video autoplay failed:', e);
+          });
+        }
+      }, 100);
+    }
+  }
 
-    const ContactUsVideo = document.getElementById('ContactUs-video');
+  // Enhanced scroll video playback with iOS fixes
+  function handleScrollVideoPlayback() {
+    const aboutUsVideo = document.getElementById('aboutus-video');
     const section5Video = document.getElementById('section5-video');
-    const ContactUs = document.getElementById('AboutUs');
+    const aboutUsSection = document.getElementById('AboutUs');
     const section5 = document.getElementById('section5');
 
-    // Check if section 2 is in viewport
-    if (isElementInViewport(ContactUs, 0.4)) {
-      if (ContactUsVideo.paused) {
-        playContactUsVideo();
-      }
+    // Check if AboutUs section is in viewport
+    if (isElementInViewport(aboutUsSection, 0.4)) {
+      playVideo(aboutUsVideo);
     }
 
     // Check if section 5 is in viewport
     if (isElementInViewport(section5, 0.4)) {
-      if (section5Video.paused) {
-        playSection5Video();
-      }
+      playVideo(section5Video);
     }
   }
 
-  // Add scroll event listener for mobile
+  // Enhanced video play function with iOS support
+  function playVideo(video) {
+    if (!video) return;
+    
+    // Ensure video is muted for autoplay
+    video.muted = true;
+    video.setAttribute('muted', '');
+    
+    if (isIOSSafari()) {
+      // iOS-specific handling
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+    }
+    
+    // Reset video to beginning
+    video.currentTime = 0;
+    
+    // Attempt to play
+    const playPromise = video.play();
+    
+    if (playPromise !== undefined) {
+      playPromise.catch(error => {
+        console.log('Video play failed:', error);
+        // Fallback: try again after user interaction
+        document.addEventListener('touchstart', function() {
+          video.play().catch(e => console.log('Retry play failed:', e));
+        }, { once: true });
+      });
+    }
+  }
+
+  // Mouse enter handlers for desktop
+  function playAboutUsVideo() {
+    if (!isMobileDevice()) {
+      playVideo(document.getElementById('aboutus-video'));
+    }
+  }
+
+  function playSection5Video() {
+    if (!isMobileDevice()) {
+      playVideo(document.getElementById('section5-video'));
+    }
+  }
+
+  // Add mouse enter events to sections for desktop
+  document.getElementById('AboutUs').addEventListener('mouseenter', playAboutUsVideo);
+  document.getElementById('section5').addEventListener('mouseenter', playSection5Video);
+
+  // Scroll event listener with throttling
   let scrollTimeout;
   window.addEventListener('scroll', function() {
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(handleScrollVideoPlayback, 100);
   });
 
-  // Also trigger on page load
+  // Initial setup when page loads
   document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(handleScrollVideoPlayback, 500);
+    // Set up all videos with iOS-friendly attributes
+    const videos = document.querySelectorAll('video');
+    videos.forEach(video => {
+      video.muted = true;
+      video.setAttribute('muted', '');
+      video.setAttribute('playsinline', '');
+      
+      if (isIOSSafari()) {
+        video.setAttribute('webkit-playsinline', '');
+        video.setAttribute('x-webkit-airplay', 'allow');
+      }
+      
+      // Pause initially to prevent unwanted autoplay
+      video.pause();
+      
+      // Set up intersection observer for better performance
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            playVideo(video);
+          }
+        });
+      }, { threshold: 0.3 });
+      
+      observer.observe(video.closest('.section'));
+    });
+
+    // Initial check after a delay
+    setTimeout(handleScrollVideoPlayback, 1000);
   });
-
-  // Video functions
-  function playContactUsVideo() {
-    const video = document.getElementById('ContactUs-video');
-    if (video.readyState >= 2) {
-      video.currentTime = 0;
-      video.play();
-    } else {
-      video.addEventListener('canplaythrough', () => {
-        video.currentTime = 0;
-        video.play();
-      }, { once: true });
-    }
-  }
-
-  function playSection5Video() {
-    const video = document.getElementById('section5-video');
-    if (video.readyState >= 2) {
-      video.currentTime = 0;
-      video.play();
-    } else {
-      video.addEventListener('canplaythrough', () => {
-        video.currentTime = 0;
-        video.play();
-      }, { once: true });
-    }
-  }
 
   // Modal functions
   function openModal() {
@@ -792,22 +897,23 @@ onmouseenter="playSection5Video()">
     }
   };
 
-  // Handle video playback on mobile
-  document.addEventListener('DOMContentLoaded', function() {
-    const videos = document.querySelectorAll('video');
-    videos.forEach(video => {
-      video.addEventListener('loadeddata', function() {
-        video.pause();
-      });
-    });
-  });
-
   // Close mobile menu on window resize
   window.addEventListener('resize', function() {
     if (window.innerWidth > 991) {
       closeMobileMenu();
     }
   });
+
+  // Force video setup on iOS after any user interaction
+  if (isIOSSafari()) {
+    document.addEventListener('touchstart', function() {
+      const videos = document.querySelectorAll('video');
+      videos.forEach(video => {
+        video.muted = true;
+        video.load(); // Reload video element
+      });
+    }, { once: true });
+  }
 </script>
 
 <!-- AOS JS -->
