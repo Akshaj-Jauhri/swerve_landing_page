@@ -195,12 +195,12 @@
       to { opacity: 1; }
     }
 
-    #section1 { background-image: url('Section_1.png'); animation-delay: 0s; }
-    #section2 { animation-delay: 0.2s; }
-    #section3 { background-image: url('Section_3.png'); animation-delay: 0.4s; }
+    #Home { background-image: url('Section_1.png'); animation-delay: 0s; }
+    #ContactUs { animation-delay: 0.2s; }
+    #TrustedBy { background-image: url('Section_3.png'); animation-delay: 0.4s; }
     #section4 { background-image: url('Section_4.png'); animation-delay: 0.6s; }
     #section5 { animation-delay: 0.8s; }
-    #section6 { background-image: url('Section_6_1.png'); animation-delay: 1s; }
+    #ContactUs { background-image: url('Section_6_1.png'); animation-delay: 1s; }
 
     video {
       width: 100%;
@@ -214,7 +214,7 @@
     @media (min-width: 1200px) {
       .section h1 { font-size: 3.5rem; }
       .section p { font-size: 1.8rem; }
-      #section1 img { height: 400px; }
+      #Home img { height: 400px; }
       #section4 p { font-size: 3rem; }
       #section4 span { font-size: 3.5rem !important; }
     }
@@ -223,7 +223,7 @@
     @media (min-width: 992px) and (max-width: 1199px) {
       .section h1 { font-size: 3rem; }
       .section p { font-size: 1.5rem; }
-      #section1 img { height: 350px; }
+      #Home img { height: 350px; }
       #section4 p { font-size: 2.5rem; }
       #section4 span { font-size: 3rem !important; }
     }
@@ -260,12 +260,12 @@
         line-height: 1.5; 
       }
       
-      #section1 img { 
+      #Home img { 
         height: 280px; 
         max-width: 90%; 
       }
       
-      #section3 img { 
+      #TrustedBy img { 
         height: 120px; 
       }
       
@@ -312,13 +312,13 @@
         line-height: 1.4; 
       }
       
-      #section1 img { 
+      #Home img { 
         height: 200px; 
         max-width: 85%; 
         object-fit: contain;
       }
       
-      #section3 img { 
+      #TrustedBy img { 
         height: 100px; 
         max-width: 150px;
         object-fit: contain;
@@ -383,19 +383,19 @@
         max-width: 100%;
       }
       
-      #section1 img { 
+      #Home img { 
         height: 150px; 
         max-width: 90%; 
         object-fit: contain;
       }
       
-      #section2 .section-content,
+      #ContactUs .section-content,
       #section4 .section-content,
       #section5 .section-content {
         max-width: 100% !important;
       }
       
-      #section3 img { 
+      #TrustedBy img { 
         height: 70px; 
         max-width: 120px;
         object-fit: contain;
@@ -461,7 +461,7 @@
         font-size: 0.9rem; 
       }
       
-      #section1 img { 
+      #Home img { 
         height: 120px; 
       }
       
@@ -483,7 +483,7 @@
         width: 45px !important; 
       }
       
-      #section3 img { 
+      #TrustedBy img { 
         height: 50px; 
         max-width: 100px;
         object-fit: contain;
@@ -540,10 +540,10 @@
   </div>
 
 <!-- Section 2 -->
-<div id="AboutUs" class="section" style="position: relative; overflow: hidden;" onmouseenter="playSection2Video()" ontouchstart="playSection2Video()">
+<div id="AboutUs" class="section" style="position: relative; overflow: hidden;" onmouseenter="playContactUsVideo()">
   
   <!-- Video Background -->
-  <video id="section2-video" muted playsinline preload="auto" style="
+  <video id="ContactUs-video" muted playsinline preload="auto" style="
     position: absolute;
     top: 0;
     left: 0;
@@ -588,7 +588,7 @@
 </div>
 
 <div id="section5" class="section" style="position: relative; overflow: hidden;"
-onmouseenter="playSection5Video()" ontouchstart="playSection5Video()">
+onmouseenter="playSection5Video()">
 
   <!-- Video Background -->
   <video id="section5-video" muted playsinline style="
@@ -702,9 +702,57 @@ onmouseenter="playSection5Video()" ontouchstart="playSection5Video()">
     link.addEventListener('click', closeMobileMenu);
   });
 
+  // Scroll-triggered video playback for mobile
+  function isMobileDevice() {
+    return window.innerWidth <= 991;
+  }
+
+  function isElementInViewport(el, threshold = 0.3) {
+    const rect = el.getBoundingClientRect();
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+    const elementHeight = rect.bottom - rect.top;
+    const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0);
+    return visibleHeight >= elementHeight * threshold;
+  }
+
+  function handleScrollVideoPlayback() {
+    if (!isMobileDevice()) return;
+
+    const ContactUsVideo = document.getElementById('ContactUs-video');
+    const section5Video = document.getElementById('section5-video');
+    const ContactUs = document.getElementById('AboutUs');
+    const section5 = document.getElementById('section5');
+
+    // Check if section 2 is in viewport
+    if (isElementInViewport(ContactUs, 0.4)) {
+      if (ContactUsVideo.paused) {
+        playContactUsVideo();
+      }
+    }
+
+    // Check if section 5 is in viewport
+    if (isElementInViewport(section5, 0.4)) {
+      if (section5Video.paused) {
+        playSection5Video();
+      }
+    }
+  }
+
+  // Add scroll event listener for mobile
+  let scrollTimeout;
+  window.addEventListener('scroll', function() {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(handleScrollVideoPlayback, 100);
+  });
+
+  // Also trigger on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(handleScrollVideoPlayback, 500);
+  });
+
   // Video functions
-  function playSection2Video() {
-    const video = document.getElementById('section2-video');
+  function playContactUsVideo() {
+    const video = document.getElementById('ContactUs-video');
     if (video.readyState >= 2) {
       video.currentTime = 0;
       video.play();
