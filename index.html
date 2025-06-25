@@ -924,20 +924,13 @@
     });
 
     // Initial check for videos already in viewport on page load
+    // Initial check for videos already in viewport on page load
     setTimeout(() => {
-      const aboutUsVideo = document.getElementById('aboutus-video');
-      const section5Video = document.getElementById('section5-video');
-      const aboutUsSection = document.getElementById('AboutUs');
-      const section5 = document.getElementById('section5');
-
-      // Check if videos are in viewport on load and start them
-      if (isElementInViewport(aboutUsSection, 0.3)) {
+        const aboutUsVideo = document.getElementById('aboutus-video');
+        const section5Video = document.getElementById('section5-video');
         startVideoOnLoad(aboutUsVideo);
-      }
-      if (isElementInViewport(section5, 0.3)) {
         startVideoOnLoad(section5Video);
-      }
-    }, 1000);
+        }, 500);
   });
 
   // Modal functions
