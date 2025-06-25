@@ -581,6 +581,7 @@
       webkit-playsinline="true"
       x-webkit-airplay="allow"
       onloadstart="this.muted = true"
+      oncanplay="handleVideoCanPlay(this)"
     >
       <source src="coffee1.mp4" type="video/mp4" />
       Your browser does not support the video tag.
@@ -789,6 +790,10 @@
     const aboutUsSection = document.getElementById('AboutUs');
     const section5 = document.getElementById('section5');
 
+    if (isElementInViewport(aboutUsSection, 0.4)) {
+      restartVideo(aboutUsVideo);
+  }
+    
     // Check if section 5 is in viewport
     if (isElementInViewport(section5, 0.4)) {
       restartVideo(section5Video);
@@ -901,32 +906,6 @@
       if (!videoStates[videoId]) {
         videoStates[videoId] = { hasAutoPlayed: false, isPlaying: false };
       }
-      
-      // Set up intersection observer for autoplay on first view
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const videoId = video.id;
-            if (!videoStates[videoId].hasAutoPlayed) {
-              // First time seeing this video - autoplay it
-              setTimeout(() => startVideoOnLoad(video), 500);
-            }
-          }
-        });
-      }, { threshold: 0.3 });
-      
-      observer.observe(video.closest('.section'));
-    });
-
-    // Initial check for videos already in viewport on page load
-    // Initial check for videos already in viewport on page load
-    setTimeout(() => {
-        const aboutUsVideo = document.getElementById('aboutus-video');
-        const section5Video = document.getElementById('section5-video');
-        startVideoOnLoad(aboutUsVideo);
-        startVideoOnLoad(section5Video);
-        }, 500);
-  });
 
   // Modal functions
   function openModal() {
