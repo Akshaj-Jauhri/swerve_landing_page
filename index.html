@@ -189,17 +189,49 @@
     </div>
   </div>
 
-  <div id="section2" class="section"">
-    <div style="text-align: center; max-width: 2500px; padding: 0 20px;">
-      <h1>
-        Making analyst reports faster, smarter, and 100% caffeine-free.
-      </h1>
-      <p style="margin-top: 20px; font-size: 2rem; font-weight: 300; color: white; line-height: 1.6;">
-        We harness the power of AI to generate analyst-grade reports—faster, smarter, and with unmatched precision.
-        Say goodbye to manual drudgery and hello to seamless, automated insights that save time and elevate performance.
-      </p>
-    </div>
+<!-- Section 2 -->
+<div id="section2" class="section" style="position: relative; overflow: hidden;" onmouseenter="playSection2Video()">
+  
+  <!-- Video Background -->
+  <video id="section2-video" muted playsinline preload="auto" style="
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: -1;
+    pointer-events: none;
+  ">
+    <source src="coffee.mp4" type="video/mp4" />
+    Your browser does not support the video tag.
+  </video>
+
+  <!-- Section Content -->
+  <div style="text-align: center; max-width: 1000px; padding: 0 20px; z-index: 1; position: relative;">
+    <h1>Making analyst reports faster, smarter, and 100% caffeine-free.</h1>
+    <p style="margin-top: 20px; font-size: 2rem; font-weight: 300; color: white; line-height: 1.6;">
+      We harness the power of AI to generate analyst-grade reports—faster, smarter, and with unmatched precision.
+      Say goodbye to manual drudgery and hello to seamless, automated insights that save time and elevate performance.
+    </p>
   </div>
+</div>
+
+<script>
+  function playSection2Video() {
+    const video = document.getElementById('section2-video');
+    if (video.readyState >= 2) {
+      video.currentTime = 0;
+      video.play();
+    } else {
+      video.addEventListener('canplaythrough', () => {
+        video.currentTime = 0;
+        video.play();
+      }, { once: true });
+    }
+  }
+</script>
+
   
 
   <div id="section3" class="section">
@@ -224,13 +256,36 @@
   </div>
   
 
-  <div id="section5" class="section">
-    <div style="text-align: center; max-width: 2500px; padding: 0 20px;">
-      <h1>
-        We'll handle the reports, you take the credit.
-      </h1>
+  <div id="section5" class="section" style="position: relative; overflow: hidden;"
+  onmouseenter="playSection5Video()">
+
+    <!-- Video Background -->
+    <video id="section5-video" muted playsinline style="
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: -1;
+    ">
+    <source src="videoplayback.mp4" type="video/mp4" />
+    Your browser does not support the video tag.
+    </video>
+
+    <!-- Section Content -->
+    <div style="text-align: center; max-width: 2500px; padding: 0 20px; z-index: 1; position: relative;">
+    <h1>We'll handle the reports, you take the credit.</h1>
     </div>
-  </div>
+    </div>
+
+    <script>
+    function playSection5Video() {
+    const video = document.getElementById('section5-video');
+    video.currentTime = 0;   // Rewind to beginning
+    video.play();
+    }
+    </script>
 
 
   <div id="section6" class="section">
