@@ -774,8 +774,16 @@
     }
   }
 
+  // Video state tracking
+  const videoStates = {
+    'aboutus-video': { hasAutoPlayed: false, isPlaying: false },
+    'section5-video': { hasAutoPlayed: false, isPlaying: false }
+  };
+
   // Enhanced scroll video playback with iOS fixes
   function handleScrollVideoPlayback() {
+    if (!isMobileDevice()) return; // Only for mobile devices
+    
     const aboutUsVideo = document.getElementById('aboutus-video');
     const section5Video = document.getElementById('section5-video');
     const aboutUsSection = document.getElementById('AboutUs');
@@ -783,18 +791,20 @@
 
     // Check if AboutUs section is in viewport
     if (isElementInViewport(aboutUsSection, 0.4)) {
-      playVideo(aboutUsVideo);
+      restartVideo(aboutUsVideo);
     }
 
     // Check if section 5 is in viewport
     if (isElementInViewport(section5, 0.4)) {
-      playVideo(section5Video);
+      restartVideo(section5Video);
     }
   }
 
   // Enhanced video play function with iOS support
-  function playVideo(video) {
+  function playVideo(video, restart = false) {
     if (!video) return;
+    
+    const videoId = video.id;
     
     // Ensure video is muted for autoplay
     video.muted = true;
@@ -806,14 +816,21 @@
       video.setAttribute('webkit-playsinline', '');
     }
     
-    // Reset video to beginning
-    video.currentTime = 0;
+    // Reset video to beginning if restarting
+    if (restart) {
+      video.currentTime = 0;
+    }
     
     // Attempt to play
     const playPromise = video.play();
     
     if (playPromise !== undefined) {
-      playPromise.catch(error => {
+      playPromise.then(() => {
+        videoStates[videoId].isPlaying = true;
+        if (!restart) {
+          videoStates[videoId].hasAutoPlayed = true;
+        }
+      }).catch(error => {
         console.log('Video play failed:', error);
         // Fallback: try again after user interaction
         document.addEventListener('touchstart', function() {
@@ -823,22 +840,45 @@
     }
   }
 
-  // Mouse enter handlers for desktop
-  function playAboutUsVideo() {
-    if (!isMobileDevice()) {
-      playVideo(document.getElementById('aboutus-video'));
+  // Restart video function
+  function restartVideo(video) {
+    if (!video) return;
+    
+    const videoId = video.id;
+    
+    // Reset to beginning and play
+    video.currentTime = 0;
+    playVideo(video, true);
+  }
+
+  // Start video on page load (autoplay)
+  function startVideoOnLoad(video) {
+    if (!video) return;
+    
+    const videoId = video.id;
+    
+    // Only autoplay if hasn't been played yet
+    if (!videoStates[videoId].hasAutoPlayed) {
+      playVideo(video, false);
     }
   }
 
-  function playSection5Video() {
+  // Mouse enter handlers for desktop - restart videos
+  function restartAboutUsVideo() {
     if (!isMobileDevice()) {
-      playVideo(document.getElementById('section5-video'));
+      restartVideo(document.getElementById('aboutus-video'));
     }
   }
 
-  // Add mouse enter events to sections for desktop
-  document.getElementById('AboutUs').addEventListener('mouseenter', playAboutUsVideo);
-  document.getElementById('section5').addEventListener('mouseenter', playSection5Video);
+  function restartSection5Video() {
+    if (!isMobileDevice()) {
+      restartVideo(document.getElementById('section5-video'));
+    }
+  }
+
+  // Add mouse enter events to sections for desktop (restart on hover)
+  document.getElementById('AboutUs').addEventListener('mouseenter', restartAboutUsVideo);
+  document.getElementById('section5').addEventListener('mouseenter', restartSection5Video);
 
   // Scroll event listener with throttling
   let scrollTimeout;
@@ -861,14 +901,21 @@
         video.setAttribute('x-webkit-airplay', 'allow');
       }
       
-      // Pause initially to prevent unwanted autoplay
-      video.pause();
+      // Initialize video state
+      const videoId = video.id;
+      if (!videoStates[videoId]) {
+        videoStates[videoId] = { hasAutoPlayed: false, isPlaying: false };
+      }
       
-      // Set up intersection observer for better performance
+      // Set up intersection observer for autoplay on first view
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
-            playVideo(video);
+            const videoId = video.id;
+            if (!videoStates[videoId].hasAutoPlayed) {
+              // First time seeing this video - autoplay it
+              setTimeout(() => startVideoOnLoad(video), 500);
+            }
           }
         });
       }, { threshold: 0.3 });
@@ -876,8 +923,21 @@
       observer.observe(video.closest('.section'));
     });
 
-    // Initial check after a delay
-    setTimeout(handleScrollVideoPlayback, 1000);
+    // Initial check for videos already in viewport on page load
+    setTimeout(() => {
+      const aboutUsVideo = document.getElementById('aboutus-video');
+      const section5Video = document.getElementById('section5-video');
+      const aboutUsSection = document.getElementById('AboutUs');
+      const section5 = document.getElementById('section5');
+
+      // Check if videos are in viewport on load and start them
+      if (isElementInViewport(aboutUsSection, 0.3)) {
+        startVideoOnLoad(aboutUsVideo);
+      }
+      if (isElementInViewport(section5, 0.3)) {
+        startVideoOnLoad(section5Video);
+      }
+    }, 1000);
   });
 
   // Modal functions
