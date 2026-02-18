@@ -576,13 +576,13 @@ function NodesCard(){
     return()=>clearInterval(iv);
   },[]);
   return(
-    <div style={{padding:"1.5rem",height:"100%",display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{padding:"1.5rem",height:"100%",display:"flex",flexDirection:"column",gap:10}}>
       <span className="lbl">Parallel Compute</span>
-      <p style={{fontWeight:700,fontSize:"1.05rem",letterSpacing:"-.03em",color:"#fff"}}>
+      <p style={{fontWeight:700,fontSize:"1.05rem",letterSpacing:"-.03em",color:"#fff",marginBottom:4}}>
         Processing Nodes
       </p>
-      <div style={{flex:1,position:"relative",minHeight:150}}>
-        <svg width="100%" height="100%" viewBox="0 0 100 100" style={{overflow:"hidden",minHeight:150}}>
+      <div style={{width:"100%",display:"flex",justifyContent:"center",flexShrink:0}}>
+        <svg width="110" height="110" viewBox="0 0 100 100" style={{overflow:"hidden",display:"block"}}>
           {/* Connection lines */}
           {nodes.slice(1).map((n,i)=>(
             <line key={i} x1={nodes[0].x} y1={nodes[0].y} x2={n.x} y2={n.y}
@@ -603,12 +603,14 @@ function NodesCard(){
           ))}
         </svg>
       </div>
-      <p style={{fontSize:"1rem",color:"rgba(255,255,255,.4)",lineHeight:1.6}}>
+      <p style={{fontSize:"1rem",color:"rgba(255,255,255,.4)",lineHeight:1.6,marginTop:"auto"}}>
         &lt;50ms distributed compute latency
       </p>
     </div>
   );
 }
+
+/* Card 3: Theme Tags */
 
 /* Card 3: Theme Tags */
 function ThemeTagsCard(){
