@@ -19,6 +19,7 @@ body{
   font-family:'Poppins',sans-serif;
   background:#000;color:#fafafa;
   overflow-x:hidden;
+  max-width:100vw;
   -webkit-font-smoothing:antialiased;
 }
 input,select,textarea,button{font-family:'Poppins',sans-serif}
@@ -201,6 +202,25 @@ input,select,textarea,button{font-family:'Poppins',sans-serif}
   .card[style*="height:280"], .card[style*="height:420"]{
     height:auto!important;
     min-height:220px;
+  }
+
+  /* Prevent cards & SVGs from overflowing horizontally */
+  .card{
+    overflow:hidden!important;
+    max-width:100%!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+  }
+  .card svg{
+    overflow:hidden!important;
+    max-width:100%!important;
+  }
+
+  /* Bento grid children must not exceed viewport */
+  div[style*="repeat(12,1fr)"] > div,
+  div[style*="repeat(12,1fr)"] > div > div{
+    max-width:100%!important;
+    min-width:0!important;
   }
 
   /* Founders/blog auto-fit grids */
@@ -561,8 +581,8 @@ function NodesCard(){
       <p style={{fontWeight:700,fontSize:"1.05rem",letterSpacing:"-.03em",color:"#fff"}}>
         Processing Nodes
       </p>
-      <div style={{flex:1,position:"relative",minHeight:120}}>
-        <svg width="100%" height="100%" viewBox="0 0 100 100" style={{overflow:"visible"}}>
+      <div style={{flex:1,position:"relative",minHeight:150}}>
+        <svg width="100%" height="100%" viewBox="0 0 100 100" style={{overflow:"hidden",minHeight:150}}>
           {/* Connection lines */}
           {nodes.slice(1).map((n,i)=>(
             <line key={i} x1={nodes[0].x} y1={nodes[0].y} x2={n.x} y2={n.y}
@@ -1205,13 +1225,13 @@ Converted into high-conviction institutional research.
 
             {/* Row 1: 3 cards */}
             <FadeUp delay={.08} style={{gridColumn:mob?"1":"1/5"}}>
-              <div className="card" style={{height:mob?240:280}}><DocScanCard/></div>
+              <div className="card" style={{height:mob?"auto":280,minHeight:mob?260:undefined}}><DocScanCard/></div>
             </FadeUp>
             <FadeUp delay={.14} style={{gridColumn:mob?"1":"5/9"}}>
-              <div className="card" style={{height:mob?240:280}}><NodesCard/></div>
+              <div className="card" style={{height:mob?"auto":280,minHeight:mob?260:undefined}}><NodesCard/></div>
             </FadeUp>
             <FadeUp delay={.20} style={{gridColumn:mob?"1":"9/13"}}>
-              <div className="card" style={{height:mob?240:280}}><ThemeTagsCard/></div>
+              <div className="card" style={{height:mob?"auto":280,minHeight:mob?260:undefined}}><ThemeTagsCard/></div>
             </FadeUp>
 
             {/* Row 2: 2 cards */}
