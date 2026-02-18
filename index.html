@@ -340,7 +340,7 @@ function FadeIn({children,delay=0,className="",style={}}){
    TYPEWRITER
 ─────────────────────────────────────────*/
 function Typewriter(){
-  const phrases=["process annual reports.","analyze sentiment signals.","identify macro themes.","generate thesis-driven research."];
+  const phrases=["process annual reports.","analyze sentiment signals.","identify macro themes.","generate research reports."];
   const [idx,setIdx]=useState(0);
   const [displayed,setDisplayed]=useState("");
   const [deleting,setDeleting]=useState(false);
@@ -976,7 +976,7 @@ function ThesisCard(){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
           paddingBottom:10,borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <span style={{fontSize:".7rem",fontWeight:700,color:P,letterSpacing:".08em",
-            textTransform:"uppercase"}}>Banking / Finance</span>
+            textTransform:"uppercase"}}>Finance / Banking</span>
           <span style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",
             background:"rgba(255,255,255,.06)",padding:"2px 7px",borderRadius:4}}>Q4 2024</span>
         </div>
@@ -1164,7 +1164,7 @@ function Home({go}){
           {/* H1 */}
           <h1 className="aFU" style={{animationDelay:".2s",fontSize:"clamp(2.8rem,6vw,5rem)",fontWeight:800,letterSpacing:"-.055em",lineHeight:1.04,marginBottom:"1.5rem",maxWidth:820}}>
             <span className="gt">Swerve is how the</span><br/>
-            <span style={{display:"block",minHeight:"1.2em"}}>
+            <span style={{display:"block",minHeight:"2.2em"}}>
               <span className="gt">best firms </span>
               <Typewriter/>
             </span>
