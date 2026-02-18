@@ -976,7 +976,7 @@ function ThesisCard(){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
           paddingBottom:10,borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <span style={{fontSize:".7rem",fontWeight:700,color:P,letterSpacing:".08em",
-            textTransform:"uppercase"}}>Finance / Banking</span>
+            textTransform:"uppercase"}}>Technology / Semiconductors</span>
           <span style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",
             background:"rgba(255,255,255,.06)",padding:"2px 7px",borderRadius:4}}>Q4 2024</span>
         </div>
@@ -1164,8 +1164,10 @@ function Home({go}){
           {/* H1 */}
           <h1 className="aFU" style={{animationDelay:".2s",fontSize:"clamp(2.8rem,6vw,5rem)",fontWeight:800,letterSpacing:"-.055em",lineHeight:1.04,marginBottom:"1.5rem",maxWidth:820}}>
             <span className="gt">Swerve is how the</span><br/>
-            <span className="gt">best firms </span>
-            <Typewriter/>
+            <span style={{display:"block",minHeight:"1.2em"}}>
+              <span className="gt">best firms </span>
+              <Typewriter/>
+            </span>
           </h1>
 
           <p className="aFU" style={{animationDelay:".35s",fontSize:"1.5rem",fontWeight:300,color:"rgba(255,255,255,.5)",lineHeight:1.8,maxWidth:520,marginBottom:"2.5rem"}}>
@@ -1292,11 +1294,11 @@ Converted into high-conviction institutional research.
               {name:"Ninad Deshmukh",role:"Co-Founder",init:"ND",
                 bg:"linear-gradient(135deg,#0d0d1a,#1a0a2e,#2d1b69)",
                 bio:"",
-                email:"ninad@swerve.ai",linkedin:"https://www.linkedin.com/in/ninad-deshmukh-40425b188/"},
+                email:"ninad_deshmukh@swerve.wtf",linkedin:"https://www.linkedin.com/in/ninad-deshmukh-40425b188/"},
               {name:"Siddharth Nagepalli",role:"Co-Founder",init:"SN",
                 bg:"linear-gradient(135deg,#0a1628,#0d2137,#0f3a5c)",
                 bio:"",
-                email:"siddharth@swerve.ai",linkedin:"https://www.linkedin.com/in/siddharth-nagepalli-345257231/"},
+                email:"siddharthnagepalli@swerve.wtf",linkedin:"https://www.linkedin.com/in/siddharth-nagepalli-345257231/"},
             ].map((f,i)=>(
               <FadeUp key={i} delay={i*.1}>
                 <div style={{
