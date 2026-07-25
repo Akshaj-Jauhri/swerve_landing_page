@@ -10,6 +10,9 @@
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
@@ -304,6 +307,23 @@ button:hover {
   /* Nav padding */
   header > div{padding:.75rem 1rem!important}
 }
+
+/* ── Portfolio dashboard page ── */
+.gbtn{position:relative;border:none;border-radius:12px;cursor:pointer;color:#fff;font-family:'Poppins',sans-serif;font-weight:600;background:linear-gradient(135deg,#9666e3,#1892f3);padding:11px 22px;font-size:.9rem;transition:transform .15s,box-shadow .2s}
+.gbtn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(150,102,227,.45)}
+.gbtn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.gbtn-ghost{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+.tab{padding:8px 16px;border-radius:9px;cursor:pointer;font-size:.85rem;font-weight:500;border:1px solid transparent;color:rgba(255,255,255,.55);background:none}
+.tab.on{background:rgba(150,102,227,.14);border-color:rgba(150,102,227,.3);color:#fff}
+.kpi{background:rgba(255,255,255,.03);border-radius:12px;padding:1rem 1.1rem}
+.kpi .k{font-size:.7rem;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em}
+.kpi .v{font-size:1.5rem;font-weight:600;margin-top:4px}
+.kpi .v.pos{color:#4ade80}
+.kpi .v.neg{color:#f87171}
+.pos{color:#4ade80}.neg{color:#f87171}
+.x{background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem;line-height:1}
+@media(max-width:760px){.rgrid{grid-template-columns:1fr!important}}
+@media(max-width:420px){.kpi .v{font-size:1.3rem}}
 </style>
 </head>
 <body>
@@ -490,7 +510,7 @@ function Nav({page,go}){
     window.addEventListener("scroll",fn);return()=>window.removeEventListener("scroll",fn);
   },[]);
   const nav=p=>{go(p);setOpen(false);window.scrollTo(0,0)};
-  const links=[["Home","home"],["Research","research"],["Insights","blog"],["Contact","contact"]];
+  const links=[["Home","home"],["Research","research"],["Insights","blog"],["Dashboard","portfolio"],["Contact","contact"]];
   return(
     <header
       style={{
@@ -2281,6 +2301,591 @@ function Contact(){
 /* ════════════════════════════════════════
    APP ROOT
 ════════════════════════════════════════*/
+/* ===== Portfolio NAV dashboard ===== */
+const API = "https://swerve-nav-api.onrender.com";
+const CCYS = ["USD","GBP","EUR","HKD","CNY","JPY","INR","SGD","AUD","CAD","CHF"];
+const SYM = {USD:"$",GBP:"£",EUR:"€",HKD:"HK$",CNY:"¥",JPY:"¥",INR:"₹",SGD:"S$",AUD:"A$",CAD:"C$",CHF:"CHF "};
+const BM = [["S&P 500","SPY"],["Nasdaq 100","QQQ"],["MSCI China","MCHI"],["MSCI World","URTH"],["NIFTY 50","^NSEI"],["FTSE 100","^FTSE"]];
+const pct = v => (v==null?"—":(v>=0?"+":"")+(v*100).toFixed(2)+"%");
+const pp  = v => (v==null?"—":(v>=0?"+":"")+v.toFixed(2)+"%");
+const num = (v,d=2)=> v==null?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+
+function emptyRow(){return {ticker:"",quantity:"",weight:"",purchase_price:"",name:"",currency:"",last_price:null,ok:null};}
+
+function Portfolio(){
+  const [model,setModel]=useState("quantity");
+  const [tab,setTab]=useState("manual");
+  const [rows,setRows]=useState([emptyRow(),emptyRow(),emptyRow()]);
+  const [cfg,setCfg]=useState({base_currency:"USD",benchmark:"SPY",start_date:"2026-01-02",end_date:"",
+    initial_capital:100000,fee_annual:0,return_basis:"total",weighting_mode:"buy_hold"});
+  const [busy,setBusy]=useState(false);
+  const [msg,setMsg]=useState(null);
+  const [res,setRes]=useState(null);
+  const [lastReq,setLastReq]=useState(null);
+  const [schedule,setSchedule]=useState(null);   // time-varying weights {date:{ticker:w}}
+  const [schedDate,setSchedDate]=useState(new Date().toISOString().slice(0,10));
+
+  const setRow=(i,k,v)=>setRows(r=>r.map((x,j)=>j===i?{...x,[k]:v}:x));
+  const saveWeightsAsOf=(d)=>{
+    const f=rows.filter(r=>r.ticker.trim());
+    if(!f.length||!d){setMsg({t:"err",m:"Add at least one ticker and pick a date first."});return;}
+    const col={}; f.forEach(r=>{col[r.ticker.trim()]=parseFloat(r.weight)||0;});
+    setSchedule(s=>({...(s||{}),[d]:col})); setModel("weight");
+    setMsg({t:"ok",m:`Saved these weights to the schedule as of ${d}.`});
+  };
+  const loadScheduleDate=(d)=>{
+    if(!schedule||!schedule[d])return;
+    const col=schedule[d];
+    setRows(Object.keys(col).map(t=>({...emptyRow(),ticker:t,weight:col[t]})));
+    setModel("weight"); setSchedDate(d);
+    setMsg({t:"ok",m:`Editing weights as of ${d} — change them and re-save to update.`});
+  };
+  const deleteScheduleDate=(d)=>setSchedule(s=>{ if(!s)return s; const n={...s}; delete n[d];
+    return Object.keys(n).length?n:null; });
+  const addRow=()=>setRows(r=>[...r,emptyRow()]);
+  const delRow=i=>setRows(r=>r.filter((_,j)=>j!==i));
+  const filled=()=>rows.filter(r=>r.ticker.trim());
+  const wtTotal=()=>rows.reduce((s,r)=>s+(r.ticker.trim()?(parseFloat(r.weight)||0):0),0);
+  const equalize=()=>{const f=rows.filter(r=>r.ticker.trim());if(!f.length)return;
+    const w=(100/f.length).toFixed(2);setRows(rs=>rs.map(r=>r.ticker.trim()?{...r,weight:w}:r));};
+  const normalize=()=>{const t=wtTotal();if(t<=0)return;
+    setRows(rs=>rs.map(r=>r.ticker.trim()?{...r,weight:((parseFloat(r.weight)||0)/t*100).toFixed(2)}:r));};
+
+  const [user,setUser]=useState(null);
+  const [authOpen,setAuthOpen]=useState(false);
+  const [myOpen,setMyOpen]=useState(false);
+  useEffect(()=>{
+    sb.auth.getSession().then(({data})=>setUser(data.session?data.session.user:null));
+    const {data:s}=sb.auth.onAuthStateChange((_e,sess)=>setUser(sess?sess.user:null));
+    return ()=>s.subscription.unsubscribe();
+  },[]);
+
+  async function savePortfolio(){
+    if(!user){setAuthOpen(true);return;}
+    const f=filled(); if(!f.length){setMsg({t:"err",m:"Add holdings first."});return;}
+    const name=prompt("Name this portfolio:", (cfg.benchmark||"My")+" portfolio");
+    if(!name)return;
+    const holdings=f.map(r=>{const h={ticker:r.ticker.trim(),name:r.name||null};
+      if(model==="quantity"){h.quantity=parseFloat(r.quantity)||0;if(r.purchase_price)h.purchase_price=parseFloat(r.purchase_price);}
+      else h.weight=parseFloat(r.weight)||0; return h;});
+    const rec={user_id:user.id,name,model,base_currency:cfg.base_currency,benchmark:cfg.benchmark,
+      start_date:cfg.start_date||null,end_date:cfg.end_date||null,initial_capital:parseFloat(cfg.initial_capital)||null,
+      fee_annual:parseFloat(cfg.fee_annual)||0,return_basis:cfg.return_basis,weighting_mode:cfg.weighting_mode,holdings,
+      schedule:schedule||null};
+    const {error}=await sb.from("portfolios").insert(rec);
+    setMsg(error?{t:"err",m:"Save failed: "+error.message}:{t:"ok",m:'Saved "'+name+'".'});
+  }
+  function loadPortfolio(p){
+    setModel(p.model);
+    setCfg(c=>({...c,base_currency:p.base_currency,benchmark:p.benchmark,start_date:p.start_date||c.start_date,
+      end_date:p.end_date||"",initial_capital:p.initial_capital||c.initial_capital,fee_annual:p.fee_annual||0,
+      return_basis:p.return_basis||"total",weighting_mode:p.weighting_mode||"buy_hold"}));
+    setRows((p.holdings||[]).map(h=>({...emptyRow(),ticker:h.ticker||"",quantity:h.quantity!=null?h.quantity:"",
+      weight:h.weight!=null?h.weight:"",purchase_price:h.purchase_price!=null?h.purchase_price:"",name:h.name||""})));
+    setSchedule(p.schedule||null);
+    setMyOpen(false); setTab("manual"); setRes(null);
+    setMsg({t:"ok",m:'Loaded "'+p.name+'"'+(p.schedule?" (with weight schedule)":"")+" — hit Compute NAV."});
+  }
+
+  function parseFile(file){
+    const fmtDate=v=>{ if(v instanceof Date) return v.toISOString().slice(0,10);
+      const s=String(v).trim(); const d=new Date(s); return isNaN(d.getTime())?s:d.toISOString().slice(0,10); };
+    const isDate=h=>h instanceof Date || /\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}|\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/.test(String(h));
+
+    const handleAOA=(aoa)=>{
+      aoa=(aoa||[]).filter(r=>r && r.some(c=>c!==null && c!==""));
+      if(!aoa.length){setMsg({t:"err",m:"That file looks empty."});return;}
+      const header=aoa[0];
+      const dateCols=header.slice(1).filter(isDate);
+      if(dateCols.length>=2){
+        // ── time-varying weight schedule: col A = ticker, cols B+ = dates ──
+        const dates=header.slice(1).map(fmtDate);
+        const body=aoa.slice(1).filter(r=>r[0]!=null && String(r[0]).trim());
+        const tickers=body.map(r=>String(r[0]).trim());
+        const sched={};
+        dates.forEach((d,i)=>{ sched[d]={}; body.forEach(r=>{ sched[d][String(r[0]).trim()]=parseFloat(r[i+1])||0; }); });
+        setSchedule(sched); setModel("weight"); setTab("manual");
+        const last=dates[dates.length-1];
+        setRows(tickers.map(t=>({...emptyRow(),ticker:t,weight:sched[last][t]})));
+        setMsg({t:"ok",m:`Loaded a weight schedule — ${tickers.length} tickers × ${dates.length} dates (${dates[0]} → ${last}), daily-rebalanced.`});
+        return;
+      }
+      // ── single weight/quantity column ──
+      setSchedule(null);
+      const norm=k=>String(k).toLowerCase().replace(/[^a-z]/g,"");
+      const objs=aoa.slice(1).map(r=>{const o={};header.forEach((h,i)=>o[String(h)]=r[i]);return o;});
+      const pick=(o,...keys)=>{for(const kk of Object.keys(o)){const n=norm(kk);if(keys.some(t=>n.includes(t)))return o[kk];}return "";};
+      const out=objs.map(o=>({...emptyRow(),
+        ticker:String(pick(o,"ticker","symbol")||"").trim(),
+        quantity:pick(o,"quantity","shares","qty")||"",
+        weight:pick(o,"weight")||"",
+        purchase_price:pick(o,"purchaseprice","costprice","avgprice","price")||""}));
+      const good=out.filter(r=>r.ticker);
+      if(!good.length){setMsg({t:"err",m:"Couldn't find a Ticker column in that file."});return;}
+      const hasW=good.some(r=>r.weight!=="" && r.weight!=null);
+      const hasQ=good.some(r=>r.quantity!=="" && r.quantity!=null);
+      let picked=model;
+      if(hasW && !hasQ){picked="weight";setModel("weight");}
+      else if(hasQ){picked="quantity";setModel("quantity");}
+      setRows(good);setTab("manual");
+      setMsg({t:"ok",m:`Loaded ${good.length} rows into ${picked==="weight"?"Target weights":"Shares held"} — review, then Compute.`});
+    };
+    const name=file.name.toLowerCase();
+    if(name.endsWith(".csv")){Papa.parse(file,{header:false,skipEmptyLines:true,complete:r=>handleAOA(r.data)});}
+    else{const rd=new FileReader();rd.onload=e=>{const wb=XLSX.read(e.target.result,{type:"array",cellDates:true});
+      handleAOA(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1}));};rd.readAsArrayBuffer(file);}
+  }
+  function parsePaste(text){
+    const out=text.split(/\n/).map(l=>l.trim()).filter(Boolean).map(l=>{const p=l.split(/[,\t]+/);
+      const q=(p[1]||"").trim();
+      return {...emptyRow(),ticker:(p[0]||"").trim(),quantity:q,weight:q};}).filter(r=>r.ticker);
+    if(out.length){setSchedule(null);setRows(out);setTab("manual");setMsg({t:"ok",m:`Parsed ${out.length} tickers.`});}
+  }
+
+  async function resolve(){
+    const f=filled();if(!f.length){setMsg({t:"err",m:"Add at least one ticker."});return;}
+    setBusy(true);setMsg(null);
+    try{
+      const r=await fetch(API+"/resolve",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({tickers:f.map(x=>x.ticker.trim())})});
+      const j=await r.json();const map={};j.results.forEach(x=>map[x.ticker.toUpperCase()]=x);
+      setRows(rs=>rs.map(x=>{const m=map[x.ticker.trim().toUpperCase()];
+        return m?{...x,ok:m.ok,name:m.name||x.name,currency:m.currency||"",last_price:m.last_price}:x;}));
+      const bad=j.results.filter(x=>!x.ok);
+      setMsg(bad.length?{t:"err",m:`Unresolved: ${bad.map(b=>b.ticker).join(", ")}`}:{t:"ok",m:"All tickers resolved."});
+    }catch(e){setMsg({t:"err",m:"Resolve failed — is the API running on :8000?"});}
+    setBusy(false);
+  }
+
+  async function compute(){
+    const f=filled();if(!f.length){setMsg({t:"err",m:"Add at least one holding."});return;}
+    setBusy(true);setMsg(null);setRes(null);
+    const holdings=f.map(r=>{const h={ticker:r.ticker.trim(),name:r.name||undefined};
+      if(model==="quantity"){h.quantity=parseFloat(r.quantity)||0;if(r.purchase_price)h.purchase_price=parseFloat(r.purchase_price);}
+      else{h.weight=parseFloat(r.weight)||0;}return h;});
+    const body={...cfg,model,end_date:cfg.end_date||null,
+      initial_capital:parseFloat(cfg.initial_capital)||100000,fee_annual:parseFloat(cfg.fee_annual)||0,holdings};
+    if(schedule){body.model="weight";body.schedule=schedule;}   // time-varying weights override
+    setLastReq(body);
+    try{
+      const r=await fetch(API+"/compute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const j=await r.json();
+      if(!r.ok){setMsg({t:"err",m:j.detail||"Compute failed."});setBusy(false);return;}
+      setRes(j);
+      if(j.warnings&&j.warnings.length)setMsg({t:"err",m:j.warnings.join(" · ")});
+    }catch(e){setMsg({t:"err",m:"Compute failed — is the API running on :8000?"});}
+    setBusy(false);
+  }
+
+  return (
+    <div className="page" style={{maxWidth:1180,margin:"0 auto",padding:"6rem 1.5rem 5rem",color:"#fafafa"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:".5rem",flexWrap:"wrap"}}>
+        <div className="lbl">Swerve · Portfolio Analytics</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {user ? <React.Fragment>
+            <button className="gbtn gbtn-ghost" style={{fontSize:".78rem",padding:"7px 13px"}} onClick={()=>setMyOpen(true)}>My portfolios</button>
+            <span style={{fontSize:".76rem",color:"rgba(255,255,255,.5)"}}>{user.email}</span>
+            <button className="gbtn gbtn-ghost" style={{fontSize:".78rem",padding:"7px 13px"}} onClick={()=>sb.auth.signOut()}>Log out</button>
+          </React.Fragment> :
+          <button className="gbtn gbtn-ghost" style={{fontSize:".78rem",padding:"7px 13px"}} onClick={()=>setAuthOpen(true)}>Sign in</button>}
+        </div>
+      </div>
+      <h1 style={{fontSize:"2.4rem",fontWeight:800,letterSpacing:"-.03em",margin:".4rem 0 .3rem"}}>
+        <span className="gt-purple">NAV Dashboard</span></h1>
+      <p style={{color:"rgba(255,255,255,.55)",fontSize:".95rem",marginBottom:"2rem"}}>
+        Upload or enter a portfolio, track its NAV, and compare it to a benchmark of your choice.</p>
+
+      <div className="card" style={{padding:"1.5rem",marginBottom:"1.5rem"}}>
+        <div style={{display:"flex",gap:8,marginBottom:"1.2rem",flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:6,background:"rgba(255,255,255,.04)",padding:4,borderRadius:11}}>
+            {["quantity","weight"].map(m=>(
+              <button key={m} className={"tab"+(model===m?" on":"")} onClick={()=>setModel(m)}>
+                {m==="quantity"?"Shares held":"Target weights"}</button>))}
+          </div>
+          <div style={{flex:1}}></div>
+          <div style={{display:"flex",gap:6}}>
+            {[["manual","Manual"],["upload","Upload"],["paste","Paste"]].map(([k,l])=>(
+              <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>setTab(k)}>{l}</button>))}
+          </div>
+        </div>
+
+        {schedule && (
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem",padding:"9px 13px",borderRadius:10,
+            background:"rgba(150,102,227,.1)",border:"1px solid rgba(150,102,227,.3)",fontSize:".84rem"}}>
+            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} dates, daily-rebalanced. The grid shows the latest weights.</span>
+            <div style={{flex:1}}></div>
+            <button className="x" title="Clear schedule" onClick={()=>{setSchedule(null);setMsg({t:"ok",m:"Schedule cleared — now using the weights in the grid."});}}>×</button>
+          </div>)}
+
+        {tab==="upload" && (
+          <label className="drop" style={{display:"block"}}>
+            <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}}
+              onChange={e=>e.target.files[0]&&parseFile(e.target.files[0])}/>
+            <div style={{fontSize:"1.6rem",marginBottom:6}}>📄</div>
+            <div style={{fontWeight:500}}>Drop a CSV or Excel, or click to browse</div>
+            <div style={{color:"rgba(255,255,255,.4)",fontSize:".8rem",marginTop:5}}>
+              Columns: Ticker, {model==="quantity"?"Quantity, [Purchase price]":"Weight"}</div>
+          </label>)}
+        {tab==="paste" && (
+          <textarea className="inp" rows="5" placeholder={"AAPL, 20\nMSFT, 10\n9988.HK, 15"}
+            style={{fontFamily:"monospace"}} onBlur={e=>parsePaste(e.target.value)}/>)}
+
+        {tab==="manual" && (
+          <div style={{overflowX:"auto"}}>
+            <table className="dt">
+              <thead><tr>
+                <th>Ticker</th>{model==="quantity"?<th>Shares</th>:<th>Weight %</th>}
+                {model==="quantity"&&<th>Purchase price</th>}<th>Resolved</th><th></th></tr></thead>
+              <tbody>
+                {rows.map((r,i)=>(
+                  <tr key={i}>
+                    <td><input className="inp" style={{width:120}} value={r.ticker} placeholder="AAPL"
+                      onChange={e=>setRow(i,"ticker",e.target.value)}/></td>
+                    {model==="quantity"
+                      ? <td><input className="inp" style={{width:100}} value={r.quantity} type="number"
+                          onChange={e=>setRow(i,"quantity",e.target.value)}/></td>
+                      : <td><input className="inp" style={{width:100}} value={r.weight} type="number"
+                          onChange={e=>setRow(i,"weight",e.target.value)}/></td>}
+                    {model==="quantity"&&<td><input className="inp" style={{width:120}} value={r.purchase_price} type="number"
+                      placeholder="optional" onChange={e=>setRow(i,"purchase_price",e.target.value)}/></td>}
+                    <td style={{color:r.ok===false?"#f87171":r.ok?"#4ade80":"rgba(255,255,255,.4)",fontSize:".8rem"}}>
+                      {r.ok===false?"not found":r.ok?`${r.name} · ${r.currency} · ${SYM[r.currency]||""}${num(r.last_price)}`:"—"}</td>
+                    <td><button className="x" onClick={()=>delRow(i)}>×</button></td>
+                  </tr>))}
+              </tbody>
+            </table>
+            <div style={{display:"flex",gap:10,marginTop:12,alignItems:"center",flexWrap:"wrap"}}>
+              <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}} onClick={addRow}>+ Add row</button>
+              {model==="weight" && <React.Fragment>
+                <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}} onClick={equalize}>Equal weight</button>
+                <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}} onClick={normalize}>Normalize to 100%</button>
+                <span style={{fontSize:".82rem",marginLeft:"auto",
+                  color:Math.abs(wtTotal()-100)<0.5?"#4ade80":"rgba(255,255,255,.5)"}}>
+                  Total weight: <b>{wtTotal().toFixed(1)}%</b></span>
+              </React.Fragment>}
+            </div>
+            {model==="weight" && (
+              <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(255,255,255,.06)"}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:".82rem",color:"rgba(255,255,255,.55)"}}>Rebalance schedule:</span>
+                  <input className="inp" type="date" style={{width:155}} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>
+                  <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}}
+                    onClick={()=>saveWeightsAsOf(schedDate)}>Save weights as of this date</button>
+                  <span style={{fontSize:".76rem",color:"rgba(255,255,255,.4)"}}>
+                    (adds a dated rebalance so the NAV follows your changing weights)</span>
+                </div>
+                {schedule && Object.keys(schedule).length>0 && (
+                  <div style={{display:"flex",gap:6,marginTop:11,flexWrap:"wrap",alignItems:"center"}}>
+                    <span style={{fontSize:".76rem",color:"rgba(255,255,255,.4)"}}>Dates in schedule:</span>
+                    {Object.keys(schedule).sort().map(d=>(
+                      <span key={d} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".76rem",padding:"3px 5px 3px 9px",
+                        borderRadius:7,background:"rgba(150,102,227,.14)",border:"1px solid rgba(150,102,227,.3)"}}>
+                        <a style={{cursor:"pointer",color:"#c4a8f2"}} onClick={()=>loadScheduleDate(d)} title="Load & edit this date">{d}</a>
+                        <span style={{cursor:"pointer",color:"rgba(255,255,255,.4)"}} onClick={()=>deleteScheduleDate(d)} title="Remove this date">×</span>
+                      </span>))}
+                  </div>)}
+              </div>)}
+          </div>)}
+      </div>
+
+      <div className="card" style={{padding:"1.5rem",marginBottom:"1.5rem"}}>
+        <div className="lbl" style={{marginBottom:"1rem"}}>Settings</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:14}}>
+          <Field label="Currency"><select className="inp" value={cfg.base_currency}
+            onChange={e=>setCfg({...cfg,base_currency:e.target.value})}>{CCYS.map(c=><option key={c}>{c}</option>)}</select></Field>
+          <Field label="Benchmark"><input className="inp" list="bmlist" value={cfg.benchmark}
+            onChange={e=>setCfg({...cfg,benchmark:e.target.value})}/>
+            <datalist id="bmlist">{BM.map(([l,t])=><option key={t} value={t}>{l}</option>)}</datalist></Field>
+          <Field label="Start date"><input className="inp" type="date" value={cfg.start_date}
+            onChange={e=>setCfg({...cfg,start_date:e.target.value})}/></Field>
+          <Field label="End date"><input className="inp" type="date" value={cfg.end_date}
+            onChange={e=>setCfg({...cfg,end_date:e.target.value})}/></Field>
+          {model==="weight"&&<Field label="Capital"><input className="inp" type="number" value={cfg.initial_capital}
+            onChange={e=>setCfg({...cfg,initial_capital:e.target.value})}/></Field>}
+          <Field label="Fee % / yr"><input className="inp" type="number" step="0.1" value={cfg.fee_annual}
+            onChange={e=>setCfg({...cfg,fee_annual:e.target.value})}/></Field>
+          <Field label="Return basis"><select className="inp" value={cfg.return_basis}
+            onChange={e=>setCfg({...cfg,return_basis:e.target.value})}>
+            <option value="total">Total (div-adj)</option><option value="price">Price</option></select></Field>
+          {model==="weight"&&<Field label="Weighting"><select className="inp" value={cfg.weighting_mode}
+            onChange={e=>setCfg({...cfg,weighting_mode:e.target.value})}>
+            <option value="buy_hold">Buy &amp; hold</option><option value="rebalance">Daily rebalance</option></select></Field>}
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:"1.4rem",alignItems:"center",flexWrap:"wrap"}}>
+          <button className="gbtn gbtn-ghost" onClick={resolve} disabled={busy}>Resolve tickers</button>
+          <button className="gbtn" onClick={compute} disabled={busy}>{busy?"Computing…":"Compute NAV"}</button>
+          <button className="gbtn gbtn-ghost" onClick={savePortfolio} disabled={busy} title={user?"Save to your account":"Sign in to save"}>Save</button>
+          {msg&&<span style={{fontSize:".84rem",color:msg.t==="err"?"#f87171":"#4ade80"}}>{msg.m}</span>}
+        </div>
+      </div>
+
+      {res && <Results res={res} cfg={cfg} model={model} lastReq={lastReq}/>}
+      {authOpen && <AuthModal onClose={()=>setAuthOpen(false)}/>}
+      {myOpen && <MyPortfolios onClose={()=>setMyOpen(false)} onLoad={loadPortfolio}/>}
+    </div>
+  );
+}
+
+function Overlay({children,onClose}){
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",
+      backdropFilter:"blur(4px)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div onClick={e=>e.stopPropagation()} className="card"
+        style={{width:"100%",maxWidth:420,padding:"1.75rem",background:"#141417"}}>{children}</div>
+    </div>);
+}
+
+function AuthModal({onClose}){
+  const [mode,setMode]=useState("in");
+  const [email,setEmail]=useState(""),[pw,setPw]=useState("");
+  const [st,setSt]=useState(null);
+  async function go(){
+    if(!email||!pw){setSt({t:"err",m:"Enter email and password."});return;}
+    setSt({t:"busy",m:"…"});
+    const {error}= mode==="in"
+      ? await sb.auth.signInWithPassword({email,password:pw})
+      : await sb.auth.signUp({email,password:pw});
+    if(error)setSt({t:"err",m:error.message});
+    else if(mode==="up")setSt({t:"ok",m:"Account created. Check your email to confirm, then sign in."});
+    else onClose();
+  }
+  return (
+    <Overlay onClose={onClose}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
+        <div style={{fontSize:"1.15rem",fontWeight:600}}>{mode==="in"?"Sign in":"Create account"}</div>
+        <button className="x" onClick={onClose}>×</button>
+      </div>
+      <input className="inp" style={{marginBottom:10}} type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/>
+      <input className="inp" style={{marginBottom:14}} type="password" placeholder="Password" value={pw}
+        onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/>
+      <button className="gbtn" style={{width:"100%"}} onClick={go} disabled={st&&st.t==="busy"}>
+        {mode==="in"?"Sign in":"Sign up"}</button>
+      {st&&<div style={{marginTop:10,fontSize:".82rem",color:st.t==="err"?"#f87171":st.t==="ok"?"#4ade80":"rgba(255,255,255,.6)"}}>{st.m}</div>}
+      <div style={{marginTop:14,fontSize:".82rem",color:"rgba(255,255,255,.5)",textAlign:"center"}}>
+        {mode==="in"?"No account? ":"Have an account? "}
+        <a style={{color:"#9666e3",cursor:"pointer"}} onClick={()=>{setMode(mode==="in"?"up":"in");setSt(null);}}>
+          {mode==="in"?"Create one":"Sign in"}</a>
+      </div>
+    </Overlay>);
+}
+
+function MyPortfolios({onClose,onLoad}){
+  const [items,setItems]=useState(null);
+  const reload=async()=>{const {data}=await sb.from("portfolios").select("*").order("updated_at",{ascending:false});setItems(data||[]);};
+  useEffect(()=>{reload();},[]);
+  async function del(id,e){e.stopPropagation();if(!confirm("Delete this portfolio?"))return;await sb.from("portfolios").delete().eq("id",id);reload();}
+  return (
+    <Overlay onClose={onClose}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
+        <div style={{fontSize:"1.15rem",fontWeight:600}}>My portfolios</div>
+        <button className="x" onClick={onClose}>×</button>
+      </div>
+      {items===null && <div style={{color:"rgba(255,255,255,.5)",fontSize:".85rem"}}>Loading…</div>}
+      {items&&items.length===0 && <div style={{color:"rgba(255,255,255,.5)",fontSize:".85rem"}}>No saved portfolios yet. Build one and hit Save.</div>}
+      <div style={{maxHeight:360,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+        {items&&items.map(p=>(
+          <div key={p.id} onClick={()=>onLoad(p)} style={{padding:"11px 13px",borderRadius:10,cursor:"pointer",
+            background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",display:"flex",justifyContent:"space-between",alignItems:"center"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(150,102,227,.4)"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.07)"}>
+            <div>
+              <div style={{fontWeight:500,fontSize:".9rem"}}>{p.name}</div>
+              <div style={{fontSize:".74rem",color:"rgba(255,255,255,.45)"}}>
+                {p.model} · {p.base_currency} · {(p.holdings||[]).length} holdings · vs {p.benchmark}</div>
+            </div>
+            <button className="x" onClick={e=>del(p.id,e)} title="Delete">🗑</button>
+          </div>))}
+      </div>
+    </Overlay>);
+}
+
+function Field({label,children}){
+  return <div><div style={{fontSize:".72rem",color:"rgba(255,255,255,.45)",marginBottom:5}}>{label}</div>{children}</div>;
+}
+
+function Results({res,cfg,model,lastReq}){
+  const sym=SYM[cfg.base_currency]||"";
+  const m=res.metrics||{}, rel=res.relative||{};
+  const capRef=useRef(null);
+  const [exp,setExp]=useState(null);
+  const [chartMode,setChartMode]=useState("rebased");
+  const fundRet=res.nav.length?res.nav[res.nav.length-1].value/res.nav[0].value-1:null;
+  const bmRet=res.benchmark.length?res.benchmark[res.benchmark.length-1].value/res.benchmark[0].value-1:null;
+  const excess=(fundRet!=null&&bmRet!=null)?fundRet-bmRet:null;
+
+  async function exportPDF(){
+    if(!lastReq)return;
+    setExp("pdf");
+    try{
+      // Server-side branded report (vector text, not a screenshot).
+      const r=await fetch(API+"/export/pdf",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lastReq)});
+      if(!r.ok)throw new Error("server error");
+      const blob=await r.blob();const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download="portfolio_report.pdf";a.click();URL.revokeObjectURL(url);
+    }catch(e){alert("PDF export failed — is the API running?");}
+    setExp(null);
+  }
+  async function exportXLSX(){
+    if(!lastReq){return;}
+    setExp("xlsx");
+    try{
+      const r=await fetch(API+"/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lastReq)});
+      if(!r.ok)throw new Error("server error");
+      const blob=await r.blob();const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download="portfolio_nav.xlsx";a.click();URL.revokeObjectURL(url);
+    }catch(e){alert("Excel export failed — is the API running?");}
+    setExp(null);
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginBottom:"1rem",flexWrap:"wrap"}}>
+        <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"9px 16px"}} onClick={exportPDF} disabled={exp}>
+          {exp==="pdf"?"Exporting…":"⬇ Export PDF"}</button>
+        <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"9px 16px"}} onClick={exportXLSX} disabled={exp}>
+          {exp==="xlsx"?"Exporting…":"⬇ Export Excel"}</button>
+      </div>
+      <div ref={capRef}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:"1.5rem"}}>
+        <Kpi k="Latest NAV" v={num(res.nav[res.nav.length-1].value)} />
+        <Kpi k="Total return" v={pct(fundRet)} cls={fundRet>=0?"pos":"neg"}/>
+        <Kpi k={res.benchmark_ticker+" return"} v={pct(bmRet)} cls={bmRet>=0?"pos":"neg"}/>
+        <Kpi k="Excess vs bench" v={pct(excess)} cls={excess>=0?"pos":"neg"}/>
+        <Kpi k="Volatility" v={m["Volatility"]!=null?(m["Volatility"]*100).toFixed(1)+"%":"—"}/>
+        <Kpi k="Max drawdown" v={m["Max Drawdown"]!=null?(m["Max Drawdown"]*100).toFixed(1)+"%":"—"} cls="neg"/>
+      </div>
+
+      <div className="card" style={{padding:"1.5rem",marginBottom:"1.5rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:10}}>
+          <div className="lbl">Fund vs {res.benchmark_ticker} · {cfg.base_currency}</div>
+          <div style={{display:"flex",gap:4,background:"rgba(255,255,255,.04)",padding:4,borderRadius:10}}>
+            <button className={"tab"+(chartMode==="rebased"?" on":"")} style={{fontSize:".76rem",padding:"6px 12px"}}
+              onClick={()=>setChartMode("rebased")}>Rebased to 100</button>
+            <button className={"tab"+(chartMode==="value"?" on":"")} style={{fontSize:".76rem",padding:"6px 12px"}}
+              onClick={()=>setChartMode("value")}>True value ({sym.trim()})</button>
+          </div>
+        </div>
+        <div style={{position:"relative",height:320}}><canvas id="navchart"/></div>
+      </div>
+      <NavChart res={res} mode={chartMode} sym={sym}/>
+
+      <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr",gap:"1.5rem",marginBottom:"1.5rem"}} className="rgrid">
+        <div className="card" style={{padding:"1.5rem",overflowX:"auto"}}>
+          <div className="lbl" style={{marginBottom:"1rem"}}>Holdings</div>
+          <table className="dt"><thead><tr>
+            <th>Name</th><th>Ticker</th>{model==="quantity"?<th>Shares</th>:<th>Wt %</th>}
+            <th>Price</th><th>Value</th><th>P&amp;L</th><th>Now %</th></tr></thead>
+            <tbody>{res.holdings.map((h,i)=>(<tr key={i}>
+              <td>{h.name}</td><td style={{color:"rgba(255,255,255,.5)"}}>{h.ticker}</td>
+              <td>{model==="quantity"?num(h.shares,0):num(h.weight,1)}</td>
+              <td>{h.price!=null?sym+num(h.price):"—"}</td>
+              <td>{h.value!=null?sym+num(h.value,0):"—"}</td>
+              <td className={((h.pnl_pct!=null?h.pnl_pct:h.contribution_pp)||0)>=0?"pos":"neg"}>{h.pnl_pct!=null?pp(h.pnl_pct):(h.contribution_pp!=null?pp(h.contribution_pp)+" pp":"—")}</td>
+              <td>{num(h.weight_now,1)}%</td></tr>))}</tbody></table>
+        </div>
+        <div className="card" style={{padding:"1.5rem"}}>
+          <div className="lbl" style={{marginBottom:"1rem"}}>Currency exposure</div>
+          {res.currency_exposure.map(c=>(
+            <div key={c.currency} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:".82rem",marginBottom:4}}>
+                <span>{c.currency}</span><span style={{color:"rgba(255,255,255,.55)"}}>{c.pct}%</span></div>
+              <div style={{height:7,background:"rgba(255,255,255,.06)",borderRadius:5}}>
+                <div style={{height:7,width:c.pct+"%",borderRadius:5,background:"linear-gradient(90deg,#9666e3,#1892f3)"}}/></div>
+            </div>))}
+          <div className="lbl" style={{margin:"1.4rem 0 .8rem"}}>vs benchmark</div>
+          <MetRow label="Alpha (ann)" v={rel["Alpha (ann)"]!=null?(rel["Alpha (ann)"]*100).toFixed(1)+"%":"—"}/>
+          <MetRow label="Beta" v={rel["Beta"]!=null?rel["Beta"].toFixed(2):"—"}/>
+          <MetRow label="Tracking error" v={rel["Tracking Error"]!=null?(rel["Tracking Error"]*100).toFixed(1)+"%":"—"}/>
+          <MetRow label="Information ratio" v={rel["Information Ratio"]!=null?rel["Information Ratio"].toFixed(2):"—"}/>
+          <MetRow label="Sharpe" v={m["Sharpe"]!=null?m["Sharpe"].toFixed(2):"—"}/>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+function EmailSignup({lastReq}){
+  const [email,setEmail]=useState("");
+  const [freq,setFreq]=useState("daily");
+  const [state,setState]=useState(null);
+  const [done,setDone]=useState(null);   // {already, frequency, message}
+  async function subscribe(){
+    if(!email||!lastReq){setState({t:"err",m:"Enter an email and compute a portfolio first."});return;}
+    setState({t:"busy",m:"Subscribing…"});
+    try{
+      const r=await fetch(API+"/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({email,frequency:freq,portfolio:lastReq})});
+      const j=await r.json();
+      if(r.ok){setDone({already:!!j.already,frequency:j.frequency||freq,message:j.message});setState(null);}
+      else setState({t:"err",m:j.detail||"Failed."});
+    }catch(e){setState({t:"err",m:"Subscribe failed — is the API running?"});}
+  }
+  const card={padding:"1.5rem",marginTop:"1.5rem",
+    background:"linear-gradient(135deg,rgba(150,102,227,.09),rgba(24,146,243,.05))"};
+
+  if(done){
+    return (
+      <div className="card" style={card}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontSize:"1.6rem"}}>{done.already?"✅":"📬"}</div>
+          <div>
+            <div style={{fontWeight:600,marginBottom:2}}>
+              {done.already?"You're already subscribed":"You're subscribed"}</div>
+            <div style={{color:"rgba(255,255,255,.65)",fontSize:".88rem"}}>
+              An email containing your portfolio will be sent to you <b style={{color:"#c4a8f2"}}>{done.frequency}</b>.
+              {!done.already&&" Check your inbox to confirm your address."}</div>
+          </div>
+        </div>
+      </div>);
+  }
+  return (
+    <div className="card" style={card}>
+      <div className="lbl" style={{marginBottom:".5rem"}}>📬 Daily email updates</div>
+      <p style={{color:"rgba(255,255,255,.6)",fontSize:".88rem",marginBottom:"1rem"}}>
+        Get this portfolio's NAV emailed to you automatically. You can unsubscribe anytime.</p>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        <input className="inp" style={{flex:1,minWidth:200}} type="email" placeholder="you@email.com"
+          value={email} onChange={e=>setEmail(e.target.value)}/>
+        <select className="inp" style={{width:130}} value={freq} onChange={e=>setFreq(e.target.value)}>
+          <option value="daily">Daily</option><option value="weekly">Weekly</option></select>
+        <button className="gbtn" onClick={subscribe} disabled={state&&state.t==="busy"}>Email me updates</button>
+      </div>
+      {state&&<div style={{marginTop:10,fontSize:".84rem",
+        color:state.t==="err"?"#f87171":"rgba(255,255,255,.6)"}}>{state.m}</div>}
+    </div>
+  );
+}
+
+function Kpi({k,v,cls}){return <div className="kpi"><div className="k">{k}</div><div className={"v "+(cls||"")}>{v}</div></div>;}
+function MetRow({label,v}){return <div style={{display:"flex",justifyContent:"space-between",fontSize:".84rem",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(255,255,255,.55)"}}>{label}</span><span style={{fontWeight:500}}>{v}</span></div>;}
+
+function NavChart({res,mode,sym}){
+  useEffect(()=>{
+    const el=document.getElementById("navchart");if(!el||!window.Chart)return;
+    if(el._c)el._c.destroy();
+    const isVal=mode==="value";
+    const scale=isVal?(res.start_value||100)/100:1;
+    const labels=res.nav.map(p=>p.date);
+    const bmap={};res.benchmark.forEach(p=>bmap[p.date]=p.value);
+    const money=v=>sym+Number(v).toLocaleString(undefined,{maximumFractionDigits:0});
+    const fmt=v=>v==null?"—":(isVal?money(v):Number(v).toFixed(2));
+    const yTick=v=>isVal?(Math.abs(v)>=1000?sym+(v/1000).toFixed(v>=1e6?1:0)+(v>=1e6?"M":"k"):sym+v):v;
+    el._c=new Chart(el,{type:"line",data:{labels,datasets:[
+      {label:"Fund",data:res.nav.map(p=>p.value*scale),borderColor:"#9666e3",backgroundColor:"rgba(150,102,227,.08)",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.25,fill:true},
+      {label:res.benchmark_ticker,data:labels.map(d=>bmap[d]!=null?bmap[d]*scale:null),borderColor:"#1892f3",borderWidth:2,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,tension:.25}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8}},
+        tooltip:{mode:"index",intersect:false,backgroundColor:"rgba(24,24,27,.97)",borderColor:"rgba(150,102,227,.4)",borderWidth:1,
+          padding:11,cornerRadius:9,titleColor:"#fff",bodyColor:"#ddd",usePointStyle:true,
+          callbacks:{label:c=>"  "+c.dataset.label+": "+fmt(c.parsed.y)}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#777",maxTicksLimit:8,font:{size:10}}},
+        y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:yTick}}}}});
+  },[res,mode,sym]);
+  return null;
+}
+
 function App(){
   const[page,setPage]=useState(()=>(window.location.hash||"").startsWith("#/blog")?"blog":"home");
   const go=useCallback(p=>{
@@ -2298,6 +2903,7 @@ function App(){
         {page==="research" && <Research/>}
         {page==="blog"     && <Blog go={go}/>}
         {page==="contact"  && <Contact/>}
+        {page==="portfolio" && <Portfolio/>}
       </main>
       <Foot go={go}/>
     </>
