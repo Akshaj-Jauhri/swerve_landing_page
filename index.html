@@ -2324,6 +2324,7 @@ function Portfolio(){
   const [lastReq,setLastReq]=useState(null);
   const [schedule,setSchedule]=useState(null);   // time-varying weights {date:{ticker:w}}
   const [schedDate,setSchedDate]=useState(new Date().toISOString().slice(0,10));
+  const [dragOver,setDragOver]=useState(false);
 
   const setRow=(i,k,v)=>setRows(r=>r.map((x,j)=>j===i?{...x,[k]:v}:x));
   const saveWeightsAsOf=(d)=>{
@@ -2388,8 +2389,14 @@ function Portfolio(){
   }
 
   function parseFile(file){
-    const fmtDate=v=>{ if(v instanceof Date) return v.toISOString().slice(0,10);
-      const s=String(v).trim(); const d=new Date(s); return isNaN(d.getTime())?s:d.toISOString().slice(0,10); };
+    const fmtDate=v=>{ const pad=n=>String(n).padStart(2,"0");
+      // Use LOCAL date parts (not toISOString/UTC) so a midnight-local Excel date
+      // in a +offset timezone (e.g. IST) doesn't roll back a day.
+      if(v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+      const s=String(v).trim();
+      const iso=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+      if(iso) return `${iso[1]}-${pad(iso[2])}-${pad(iso[3])}`;
+      const d=new Date(s); return isNaN(d.getTime())?s:`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
     const isDate=h=>h instanceof Date || /\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}|\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/.test(String(h));
 
     const handleAOA=(aoa)=>{
@@ -2453,7 +2460,7 @@ function Portfolio(){
         return m?{...x,ok:m.ok,name:m.name||x.name,currency:m.currency||"",last_price:m.last_price}:x;}));
       const bad=j.results.filter(x=>!x.ok);
       setMsg(bad.length?{t:"err",m:`Unresolved: ${bad.map(b=>b.ticker).join(", ")}`}:{t:"ok",m:"All tickers resolved."});
-    }catch(e){setMsg({t:"err",m:"Resolve failed — is the API running on :8000?"});}
+    }catch(e){setMsg({t:"err",m:"Resolve failed — the pricing service didn't respond. Please try again in a moment."});}
     setBusy(false);
   }
 
@@ -2473,7 +2480,7 @@ function Portfolio(){
       if(!r.ok){setMsg({t:"err",m:j.detail||"Compute failed."});setBusy(false);return;}
       setRes(j);
       if(j.warnings&&j.warnings.length)setMsg({t:"err",m:j.warnings.join(" · ")});
-    }catch(e){setMsg({t:"err",m:"Compute failed — is the API running on :8000?"});}
+    }catch(e){setMsg({t:"err",m:"Compute failed — the pricing service didn't respond. Please try again in a moment."});}
     setBusy(false);
   }
 
@@ -2518,7 +2525,12 @@ function Portfolio(){
           </div>)}
 
         {tab==="upload" && (
-          <label className="drop" style={{display:"block"}}>
+          <label className="drop" style={{display:"block",...(dragOver?{borderColor:"rgba(150,102,227,.8)",background:"rgba(150,102,227,.08)"}:{})}}
+            onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+            onDragLeave={e=>{e.preventDefault();setDragOver(false);}}
+            onDrop={e=>{e.preventDefault();setDragOver(false);
+              const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+              if(f)parseFile(f); else setMsg({t:"err",m:"Couldn't read the dropped file."});}}>
             <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}}
               onChange={e=>e.target.files[0]&&parseFile(e.target.files[0])}/>
             <div style={{fontSize:"1.6rem",marginBottom:6}}>📄</div>
