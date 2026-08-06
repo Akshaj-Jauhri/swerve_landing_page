@@ -2355,6 +2355,15 @@ function Portfolio(){
     const w=(100/f.length).toFixed(2);setRows(rs=>rs.map(r=>r.ticker.trim()?{...r,weight:w}:r));};
   const normalize=()=>{const t=wtTotal();if(t<=0)return;
     setRows(rs=>rs.map(r=>r.ticker.trim()?{...r,weight:((parseFloat(r.weight)||0)/t*100).toFixed(2)}:r));};
+  // ── schedule-matrix editing (all dates shown as columns) ──
+  const scheduleActive=()=>model==="weight" && schedule && Object.keys(schedule).length>0;
+  const setSchedCell=(d,t,v)=>{t=t.trim();if(!t)return;setSchedule(s=>({...s,[d]:{...s[d],[t]:parseFloat(v)||0}}));};
+  const renameSchedTicker=(oldT,newT)=>{newT=newT.trim();if(oldT===newT)return;
+    setSchedule(s=>{const n={};for(const d in s){n[d]={};for(const k in s[d])if(k)n[d][k===oldT?newT:k]=s[d][k];}return n;});};
+  const removeSchedTicker=t=>setSchedule(s=>{const n={};for(const d in s){n[d]={...s[d]};delete n[d][t];}return n;});
+  const addSchedColumn=d=>{if(!d)return;setSchedule(s=>{const dates=Object.keys(s||{}).sort();
+    const src=dates.length?s[dates[dates.length-1]]:Object.fromEntries(rows.filter(r=>r.ticker.trim()).map(r=>[r.ticker.trim(),parseFloat(r.weight)||0]));
+    return {...(s||{}),[d]:{...src}};});setModel("weight");setMsg({t:"ok",m:`Added rebalance date ${d}.`});};
 
   const [user,setUser]=useState(null);
   const [authOpen,setAuthOpen]=useState(false);
@@ -2564,7 +2573,7 @@ function Portfolio(){
         {schedule && (
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem",padding:"9px 13px",borderRadius:10,
             background:"rgba(150,102,227,.1)",border:"1px solid rgba(150,102,227,.3)",fontSize:".84rem"}}>
-            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}. The grid shows the latest weights.</span>
+            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}. Edit any weight below or add a date.</span>
             <div style={{flex:1}}></div>
             <label style={{fontSize:".78rem",color:"rgba(255,255,255,.6)",display:"flex",alignItems:"center",gap:6}}>Between dates:
               <select className="inp" style={{width:"auto",padding:"5px 9px",fontSize:".78rem"}} value={cfg.schedule_rebalance}
@@ -2594,7 +2603,48 @@ function Portfolio(){
           <textarea className="inp" rows="5" placeholder={"AAPL, 20\nMSFT, 10\n9988.HK, 15"}
             style={{fontFamily:"monospace"}} onBlur={e=>parsePaste(e.target.value)}/>)}
 
-        {tab==="manual" && (
+        {tab==="manual" && scheduleActive() && (
+          <div style={{overflowX:"auto"}}>
+            <table className="dt">
+              <thead><tr>
+                <th>Ticker</th>
+                {Object.keys(schedule).sort().map(d=>(
+                  <th key={d} style={{whiteSpace:"nowrap"}}>{d} <span style={{cursor:"pointer",color:"rgba(255,255,255,.4)"}}
+                    title="Remove this date" onClick={()=>deleteScheduleDate(d)}>×</span></th>))}
+                <th>Resolved</th><th></th></tr></thead>
+              <tbody>
+                {rows.map((r,i)=>(
+                  <tr key={i}>
+                    <td><input className="inp" style={{width:120}} defaultValue={r.ticker} key={"tk"+i+"-"+r.ticker} placeholder="AAPL"
+                      onBlur={e=>{const nv=e.target.value.trim();if(nv!==r.ticker){renameSchedTicker(r.ticker,nv);setRow(i,"ticker",nv);}}}/></td>
+                    {Object.keys(schedule).sort().map(d=>(
+                      <td key={d}><input className="inp" style={{width:78}} type="number" value={schedule[d][r.ticker.trim()]??""}
+                        onChange={e=>setSchedCell(d,r.ticker,e.target.value)}/></td>))}
+                    <td style={{color:r.ok===false?"#f87171":r.ok?"#4ade80":"rgba(255,255,255,.4)",fontSize:".8rem"}}>
+                      {r.ok===false?"not found":r.ok?`${r.name} · ${r.currency} · ${SYM[r.currency]||""}${num(r.last_price)}`:"—"}</td>
+                    <td><button className="x" onClick={()=>{removeSchedTicker(r.ticker.trim());delRow(i);}}>×</button></td>
+                  </tr>))}
+                <tr style={{borderTop:"1px solid rgba(255,255,255,.12)"}}>
+                  <td style={{fontSize:".76rem",color:"rgba(255,255,255,.45)"}}>Total %</td>
+                  {Object.keys(schedule).sort().map(d=>{const tot=Object.values(schedule[d]).reduce((a,b)=>a+(parseFloat(b)||0),0);
+                    return <td key={d} style={{fontSize:".78rem",fontWeight:600,color:Math.abs(tot-100)<0.5?"#4ade80":"rgba(255,255,255,.5)"}}>{tot.toFixed(1)}</td>;})}
+                  <td></td><td></td></tr>
+              </tbody>
+            </table>
+            <div style={{display:"flex",gap:10,marginTop:12,alignItems:"center",flexWrap:"wrap"}}>
+              <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}} onClick={addRow}>+ Add ticker</button>
+              <span style={{fontSize:".82rem",color:"rgba(255,255,255,.55)",marginLeft:8}}>Add a rebalance date:</span>
+              <input className="inp" type="date" style={{width:150}} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>
+              <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}} onClick={()=>addSchedColumn(schedDate)}>+ Add date</button>
+              <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px",marginLeft:"auto"}}
+                onClick={()=>{setSchedule(null);setMsg({t:"ok",m:"Schedule cleared — back to fixed weights."});}}>Clear schedule</button>
+            </div>
+            <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginTop:8}}>
+              Each dated column holds the target weights that take effect from that date. Edit any cell directly; “+ Add date” starts from the latest column’s weights.
+            </div>
+          </div>)}
+
+        {tab==="manual" && !scheduleActive() && (
           <div style={{overflowX:"auto"}}>
             <table className="dt">
               <thead><tr>
@@ -2631,23 +2681,13 @@ function Portfolio(){
             {model==="weight" && (
               <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(255,255,255,.06)"}}>
                 <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  <span style={{fontSize:".82rem",color:"rgba(255,255,255,.55)"}}>Rebalance schedule:</span>
+                  <span style={{fontSize:".82rem",color:"rgba(255,255,255,.55)"}}>Weights change over time?</span>
                   <input className="inp" type="date" style={{width:155}} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>
                   <button className="gbtn gbtn-ghost" style={{fontSize:".82rem",padding:"8px 16px"}}
-                    onClick={()=>saveWeightsAsOf(schedDate)}>Save weights as of this date</button>
+                    onClick={()=>saveWeightsAsOf(schedDate)}>Start a dated schedule</button>
                   <span style={{fontSize:".76rem",color:"rgba(255,255,255,.4)"}}>
-                    (adds a dated rebalance so the NAV follows your changing weights)</span>
+                    Saves the current weights under this date. You can then add more dates and edit each — the NAV rebalances across them.</span>
                 </div>
-                {schedule && Object.keys(schedule).length>0 && (
-                  <div style={{display:"flex",gap:6,marginTop:11,flexWrap:"wrap",alignItems:"center"}}>
-                    <span style={{fontSize:".76rem",color:"rgba(255,255,255,.4)"}}>Dates in schedule:</span>
-                    {Object.keys(schedule).sort().map(d=>(
-                      <span key={d} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".76rem",padding:"3px 5px 3px 9px",
-                        borderRadius:7,background:"rgba(150,102,227,.14)",border:"1px solid rgba(150,102,227,.3)"}}>
-                        <a style={{cursor:"pointer",color:"#c4a8f2"}} onClick={()=>loadScheduleDate(d)} title="Load & edit this date">{d}</a>
-                        <span style={{cursor:"pointer",color:"rgba(255,255,255,.4)"}} onClick={()=>deleteScheduleDate(d)} title="Remove this date">×</span>
-                      </span>))}
-                  </div>)}
               </div>)}
           </div>)}
       </div>
@@ -2992,4 +3032,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
