@@ -2305,7 +2305,10 @@ function Contact(){
 const API = "https://swerve-nav-api.onrender.com";
 const CCYS = ["USD","GBP","EUR","HKD","CNY","JPY","INR","SGD","AUD","CAD","CHF"];
 const SYM = {USD:"$",GBP:"£",EUR:"€",HKD:"HK$",CNY:"¥",JPY:"¥",INR:"₹",SGD:"S$",AUD:"A$",CAD:"C$",CHF:"CHF "};
-const BM = [["S&P 500","SPY"],["Nasdaq 100","QQQ"],["MSCI China","MCHI"],["MSCI World","URTH"],["NIFTY 50","^NSEI"],["FTSE 100","^FTSE"]];
+const BM = [["S&P 500","SPY"],["Nasdaq 100","QQQ"],["Dow Jones","DIA"],["Russell 2000","IWM"],
+  ["MSCI World","URTH"],["MSCI ACWI","ACWI"],["MSCI Emerging Mkts","EEM"],["MSCI China","MCHI"],
+  ["NIFTY 50","^NSEI"],["BSE Sensex","^BSESN"],["FTSE 100","^FTSE"],["Euro Stoxx 50","^STOXX50E"],
+  ["Nikkei 225","^N225"],["Hang Seng","^HSI"]];
 const pct = v => (v==null?"—":(v>=0?"+":"")+(v*100).toFixed(2)+"%");
 const pp  = v => (v==null?"—":(v>=0?"+":"")+v.toFixed(2)+"%");
 const num = (v,d=2)=> v==null?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
@@ -2317,7 +2320,7 @@ function Portfolio(){
   const [tab,setTab]=useState("manual");
   const [rows,setRows]=useState([emptyRow(),emptyRow(),emptyRow()]);
   const [cfg,setCfg]=useState({base_currency:"USD",benchmark:"SPY",start_date:"2026-01-02",end_date:"",
-    initial_capital:100000,fee_annual:0,return_basis:"total",weighting_mode:"buy_hold"});
+    initial_capital:100000,fee_annual:0,rf_annual:3,return_basis:"total",weighting_mode:"buy_hold"});
   const [busy,setBusy]=useState(false);
   const [msg,setMsg]=useState(null);
   const [res,setRes]=useState(null);
@@ -2325,6 +2328,7 @@ function Portfolio(){
   const [schedule,setSchedule]=useState(null);   // time-varying weights {date:{ticker:w}}
   const [schedDate,setSchedDate]=useState(new Date().toISOString().slice(0,10));
   const [dragOver,setDragOver]=useState(false);
+  const [bmCustom,setBmCustom]=useState(false);
 
   const setRow=(i,k,v)=>setRows(r=>r.map((x,j)=>j===i?{...x,[k]:v}:x));
   const saveWeightsAsOf=(d)=>{
@@ -2390,40 +2394,79 @@ function Portfolio(){
 
   function parseFile(file){
     const fmtDate=v=>{ const pad=n=>String(n).padStart(2,"0");
-      // Use LOCAL date parts (not toISOString/UTC) so a midnight-local Excel date
-      // in a +offset timezone (e.g. IST) doesn't roll back a day.
-      if(v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+      // SheetJS emits date cells at ~23:59:50 of the PREVIOUS day (its UTC/local
+      // rounding quirk). Shift +12h before reading local parts so the calendar
+      // day snaps back to the intended date (fixes the IST off-by-one).
+      const fromLocal=d=>{const s=new Date(d.getTime()+12*3600*1000);
+        return `${s.getFullYear()}-${pad(s.getMonth()+1)}-${pad(s.getDate())}`;};
+      if(v instanceof Date) return fromLocal(v);
       const s=String(v).trim();
       const iso=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
       if(iso) return `${iso[1]}-${pad(iso[2])}-${pad(iso[3])}`;
-      const d=new Date(s); return isNaN(d.getTime())?s:`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+      const d=new Date(s); return isNaN(d.getTime())?s:fromLocal(d); };
     const isDate=h=>h instanceof Date || /\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}|\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/.test(String(h));
+
+    // Auto-convert Bloomberg-style tickers (ROOT:CC) to Yahoo format via the
+    // backend /convert lookup. Rewrites the grid + schedule; unconvertible ones
+    // are kept and flagged by name so the user can fix them manually.
+    const applyUpload=async(newRows,newSched,nameMap,baseMsg)=>{
+      const hasBBG=newRows.some(r=>String(r.ticker).includes(":"));
+      setSchedule(newSched||null); setRows(newRows); setTab("manual");
+      if(baseMsg)setMsg(baseMsg);
+      if(!hasBBG)return;
+      setBusy(true);
+      try{
+        const items=newRows.filter(r=>String(r.ticker).includes(":"))
+          .map(r=>({ticker:r.ticker.trim(),name:(nameMap&&nameMap[r.ticker.trim()])||r.name||null}));
+        const resp=await fetch(API+"/convert",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({items})});
+        const j=await resp.json(); const map={}; (j.results||[]).forEach(x=>map[x.input]=x);
+        const remap={}, failed=[];
+        const outRows=newRows.map(r=>{const t=r.ticker.trim(); const c=map[t]; if(!c)return r;
+          if(c.ok){remap[t]=c.yahoo; return {...r,ticker:c.yahoo,name:c.name||r.name,ok:undefined,last_price:undefined};}
+          failed.push({t,name:c.name}); return {...r,ok:false};});
+        let outSched=null;
+        if(newSched){outSched={};Object.keys(newSched).forEach(d=>{outSched[d]={};
+          Object.keys(newSched[d]).forEach(tk=>{outSched[d][remap[tk]||tk]=newSched[d][tk];});});}
+        setSchedule(outSched); setRows(outRows);
+        const nconv=Object.keys(remap).length;
+        setMsg(failed.length
+          ? {t:"err",m:`Converted ${nconv} Bloomberg ticker(s) to Yahoo format. Couldn't convert: `+
+              failed.map(f=>f.name?`${f.t} (${f.name})`:f.t).join(", ")+`. Enter their Yahoo tickers manually.`}
+          : {t:"ok",m:`Converted ${nconv} Bloomberg ticker(s) to Yahoo format.`});
+      }catch(e){
+        setMsg({t:"err",m:"Bloomberg conversion service didn't respond — tickers left as-is. Try again in a moment."});
+      }finally{setBusy(false);}
+    };
 
     const handleAOA=(aoa)=>{
       aoa=(aoa||[]).filter(r=>r && r.some(c=>c!==null && c!==""));
       if(!aoa.length){setMsg({t:"err",m:"That file looks empty."});return;}
       const header=aoa[0];
       const dateCols=header.slice(1).filter(isDate);
-      if(dateCols.length>=2){
-        // ── time-varying weight schedule: col A = ticker, cols B+ = dates ──
+      if(dateCols.length>=1){
+        // ── weight schedule (col A = ticker, cols B+ = dates). One date column is
+        //    treated as a single-date schedule so weight uploads always carry a date. ──
         const dates=header.slice(1).map(fmtDate);
         const body=aoa.slice(1).filter(r=>r[0]!=null && String(r[0]).trim());
         const tickers=body.map(r=>String(r[0]).trim());
         const sched={};
         dates.forEach((d,i)=>{ sched[d]={}; body.forEach(r=>{ sched[d][String(r[0]).trim()]=parseFloat(r[i+1])||0; }); });
-        setSchedule(sched); setModel("weight"); setTab("manual");
+        setModel("weight");
         const last=dates[dates.length-1];
-        setRows(tickers.map(t=>({...emptyRow(),ticker:t,weight:sched[last][t]})));
-        setMsg({t:"ok",m:`Loaded a weight schedule — ${tickers.length} tickers × ${dates.length} dates (${dates[0]} → ${last}), daily-rebalanced.`});
+        const rowsArr=tickers.map(t=>({...emptyRow(),ticker:t,weight:sched[last][t]}));
+        applyUpload(rowsArr, sched, null, {t:"ok",m: dates.length>1
+          ? `Loaded a weight schedule — ${tickers.length} tickers × ${dates.length} dates (${dates[0]} → ${last}), daily-rebalanced.`
+          : `Loaded ${tickers.length} weights as of ${last}.`});
         return;
       }
       // ── single weight/quantity column ──
-      setSchedule(null);
       const norm=k=>String(k).toLowerCase().replace(/[^a-z]/g,"");
       const objs=aoa.slice(1).map(r=>{const o={};header.forEach((h,i)=>o[String(h)]=r[i]);return o;});
       const pick=(o,...keys)=>{for(const kk of Object.keys(o)){const n=norm(kk);if(keys.some(t=>n.includes(t)))return o[kk];}return "";};
       const out=objs.map(o=>({...emptyRow(),
         ticker:String(pick(o,"ticker","symbol")||"").trim(),
+        name:String(pick(o,"name","company","security")||"").trim(),
         quantity:pick(o,"quantity","shares","qty")||"",
         weight:pick(o,"weight")||"",
         purchase_price:pick(o,"purchaseprice","costprice","avgprice","price")||""}));
@@ -2434,8 +2477,9 @@ function Portfolio(){
       let picked=model;
       if(hasW && !hasQ){picked="weight";setModel("weight");}
       else if(hasQ){picked="quantity";setModel("quantity");}
-      setRows(good);setTab("manual");
-      setMsg({t:"ok",m:`Loaded ${good.length} rows into ${picked==="weight"?"Target weights":"Shares held"} — review, then Compute.`});
+      const nameMap={}; good.forEach(r=>{if(r.name)nameMap[r.ticker.trim()]=r.name;});
+      applyUpload(good, null, nameMap,
+        {t:"ok",m:`Loaded ${good.length} rows into ${picked==="weight"?"Target weights":"Shares held"} — review, then Compute.`});
     };
     const name=file.name.toLowerCase();
     if(name.endsWith(".csv")){Papa.parse(file,{header:false,skipEmptyLines:true,complete:r=>handleAOA(r.data)});}
@@ -2471,7 +2515,8 @@ function Portfolio(){
       if(model==="quantity"){h.quantity=parseFloat(r.quantity)||0;if(r.purchase_price)h.purchase_price=parseFloat(r.purchase_price);}
       else{h.weight=parseFloat(r.weight)||0;}return h;});
     const body={...cfg,model,end_date:cfg.end_date||null,
-      initial_capital:parseFloat(cfg.initial_capital)||100000,fee_annual:parseFloat(cfg.fee_annual)||0,holdings};
+      initial_capital:parseFloat(cfg.initial_capital)||100000,fee_annual:parseFloat(cfg.fee_annual)||0,
+      rf_annual:parseFloat(cfg.rf_annual)||0,holdings};
     if(schedule){body.model="weight";body.schedule=schedule;}   // time-varying weights override
     setLastReq(body);
     try{
@@ -2519,7 +2564,7 @@ function Portfolio(){
         {schedule && (
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem",padding:"9px 13px",borderRadius:10,
             background:"rgba(150,102,227,.1)",border:"1px solid rgba(150,102,227,.3)",fontSize:".84rem"}}>
-            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} dates, daily-rebalanced. The grid shows the latest weights.</span>
+            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}, daily-rebalanced. The grid shows the latest weights.</span>
             <div style={{flex:1}}></div>
             <button className="x" title="Clear schedule" onClick={()=>{setSchedule(null);setMsg({t:"ok",m:"Schedule cleared — now using the weights in the grid."});}}>×</button>
           </div>)}
@@ -2605,9 +2650,17 @@ function Portfolio(){
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:14}}>
           <Field label="Currency"><select className="inp" value={cfg.base_currency}
             onChange={e=>setCfg({...cfg,base_currency:e.target.value})}>{CCYS.map(c=><option key={c}>{c}</option>)}</select></Field>
-          <Field label="Benchmark"><input className="inp" list="bmlist" value={cfg.benchmark}
-            onChange={e=>setCfg({...cfg,benchmark:e.target.value})}/>
-            <datalist id="bmlist">{BM.map(([l,t])=><option key={t} value={t}>{l}</option>)}</datalist></Field>
+          <Field label="Benchmark"><select className="inp"
+            value={(bmCustom||!BM.some(([l,t])=>t===cfg.benchmark))?"__custom__":cfg.benchmark}
+            onChange={e=>{const v=e.target.value;
+              if(v==="__custom__"){setBmCustom(true);setCfg({...cfg,benchmark:""});}
+              else{setBmCustom(false);setCfg({...cfg,benchmark:v});}}}>
+            {BM.map(([l,t])=><option key={t} value={t} style={{background:"#1a1a1a",color:"#fafafa"}}>{l} ({t})</option>)}
+            <option value="__custom__" style={{background:"#1a1a1a",color:"#fafafa"}}>Custom ticker…</option>
+          </select>
+          {(bmCustom||!BM.some(([l,t])=>t===cfg.benchmark)) &&
+            <input className="inp" style={{marginTop:8}} placeholder="Yahoo ticker, e.g. ^GSPC, VOO, 000300.SS"
+              value={cfg.benchmark} onChange={e=>setCfg({...cfg,benchmark:e.target.value})}/>}</Field>
           <Field label="Start date"><input className="inp" type="date" value={cfg.start_date}
             onChange={e=>setCfg({...cfg,start_date:e.target.value})}/></Field>
           <Field label="End date"><input className="inp" type="date" value={cfg.end_date}
@@ -2616,6 +2669,8 @@ function Portfolio(){
             onChange={e=>setCfg({...cfg,initial_capital:e.target.value})}/></Field>}
           <Field label="Fee % / yr"><input className="inp" type="number" step="0.1" value={cfg.fee_annual}
             onChange={e=>setCfg({...cfg,fee_annual:e.target.value})}/></Field>
+          <Field label="Risk-free % / yr"><input className="inp" type="number" step="0.1" value={cfg.rf_annual}
+            onChange={e=>setCfg({...cfg,rf_annual:e.target.value})}/></Field>
           <Field label="Return basis"><select className="inp" value={cfg.return_basis}
             onChange={e=>setCfg({...cfg,return_basis:e.target.value})}>
             <option value="total">Total (div-adj)</option><option value="price">Price</option></select></Field>
@@ -2805,6 +2860,11 @@ function Results({res,cfg,model,lastReq}){
                 <div style={{height:7,width:c.pct+"%",borderRadius:5,background:"linear-gradient(90deg,#9666e3,#1892f3)"}}/></div>
             </div>))}
           <div className="lbl" style={{margin:"1.4rem 0 .8rem"}}>vs benchmark</div>
+          {(res.nav.length-1)<60 && (
+            <div style={{fontSize:".72rem",lineHeight:1.4,color:"#e0b34a",background:"rgba(224,179,74,.09)",
+              border:"1px solid rgba(224,179,74,.25)",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
+              ⚠️ Short history ({res.nav.length-1} trading days). Annualised figures (Alpha, Tracking error, Sharpe)
+              extrapolate a brief window to a full year and are unstable — read them as a current pace, not a forecast.</div>)}
           <MetRow label="Alpha (ann)" v={rel["Alpha (ann)"]!=null?(rel["Alpha (ann)"]*100).toFixed(1)+"%":"—"}/>
           <MetRow label="Beta" v={rel["Beta"]!=null?rel["Beta"].toFixed(2):"—"}/>
           <MetRow label="Tracking error" v={rel["Tracking Error"]!=null?(rel["Tracking Error"]*100).toFixed(1)+"%":"—"}/>
