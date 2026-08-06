@@ -2320,7 +2320,7 @@ function Portfolio(){
   const [tab,setTab]=useState("manual");
   const [rows,setRows]=useState([emptyRow(),emptyRow(),emptyRow()]);
   const [cfg,setCfg]=useState({base_currency:"USD",benchmark:"SPY",start_date:"2026-01-02",end_date:"",
-    initial_capital:100000,fee_annual:0,rf_annual:3,return_basis:"total",weighting_mode:"buy_hold"});
+    initial_capital:100000,fee_annual:0,rf_annual:3,return_basis:"total",weighting_mode:"buy_hold",schedule_rebalance:"daily"});
   const [busy,setBusy]=useState(false);
   const [msg,setMsg]=useState(null);
   const [res,setRes]=useState(null);
@@ -2564,8 +2564,15 @@ function Portfolio(){
         {schedule && (
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem",padding:"9px 13px",borderRadius:10,
             background:"rgba(150,102,227,.1)",border:"1px solid rgba(150,102,227,.3)",fontSize:".84rem"}}>
-            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}, daily-rebalanced. The grid shows the latest weights.</span>
+            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}. The grid shows the latest weights.</span>
             <div style={{flex:1}}></div>
+            <label style={{fontSize:".78rem",color:"rgba(255,255,255,.6)",display:"flex",alignItems:"center",gap:6}}>Between dates:
+              <select className="inp" style={{width:"auto",padding:"5px 9px",fontSize:".78rem"}} value={cfg.schedule_rebalance}
+                onChange={e=>setCfg({...cfg,schedule_rebalance:e.target.value})}
+                title="Daily: hold target weights by trading daily. Periodic: rebalance only on schedule dates, drift in between.">
+                <option value="daily" style={{background:"#1a1a1a"}}>Rebalance daily</option>
+                <option value="periodic" style={{background:"#1a1a1a"}}>Drift (hold between dates)</option>
+              </select></label>
             <button className="x" title="Clear schedule" onClick={()=>{setSchedule(null);setMsg({t:"ok",m:"Schedule cleared — now using the weights in the grid."});}}>×</button>
           </div>)}
 
@@ -2985,3 +2992,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
+
