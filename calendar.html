@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Swerve — India Economic Calendar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Poppins',sans-serif;
+  background: radial-gradient(circle at 20% 30%, rgba(99,102,241,0.15), transparent 40%),
+              radial-gradient(circle at 80% 70%, rgba(59,130,246,0.15), transparent 40%),
+              #000;
+  overflow-x:hidden;
+  max-width:100vw;
+  -webkit-font-smoothing:antialiased;
+}
+input,select,textarea,button{font-family:'Poppins',sans-serif}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:#000}
+::-webkit-scrollbar-thumb{background:#27272a}
+
+/* Zinc-900 ring card — core bento primitive */
+.card{
+  background:rgba(24,24,27,.95);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  overflow:hidden;
+}
+.card-sharp{
+  background:rgba(24,24,27,.95);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;
+  overflow:hidden;
+}
+button {
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+
+/* Gradient text */
+.gt{
+  background:linear-gradient(135deg,#fff 0%,rgba(255,255,255,.55) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.gt-purple{
+  background:linear-gradient(135deg,#9666e3,#1892f3);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+/* SVG grid pattern */
+.grid-bg{
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+
+/* Dot grid */
+.dot-bg{
+  background-image:radial-gradient(circle,rgba(255,255,255,.12) 1px,transparent 1px);
+  background-size:22px 22px;
+}
+
+/* Glow button */
+@keyframes glowPulse{
+  0%,100%{box-shadow:0 0 20px rgba(150,102,227,.5),0 0 40px rgba(24,146,243,.25)}
+  50%{box-shadow:0 0 32px rgba(150,102,227,.8),0 0 60px rgba(24,146,243,.45),0 0 80px rgba(150,102,227,.3)}
+}
+@keyframes glowRotate{
+  0%{transform:rotate(0deg) scale(1.4)}
+  100%{transform:rotate(360deg) scale(1.4)}
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes scanDown{
+  0%{transform:translateY(-100%);opacity:.8}
+  100%{transform:translateY(400%);opacity:0}
+}
+@keyframes nodeFlash{
+  0%,90%,100%{opacity:.3;transform:scale(1)}
+  92%,98%{opacity:1;transform:scale(1.35)}
+}
+@keyframes tickerX{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes spinSlow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes shimmer{
+  0%{background-position:-200% 0}
+  100%{background-position:200% 0}
+}
+@keyframes barAnim{from{height:0}to{height:var(--bh)}}
+@keyframes dashDraw{from{stroke-dashoffset:300}to{stroke-dashoffset:0}}
+
+.aSpin{animation:spinSlow 8s linear infinite}
+.aPulse{animation:glowPulse 2.4s ease-in-out infinite}
+.aTick{animation:tickerX 40s linear infinite}
+.aBlink{animation:blink 1.1s step-end infinite}
+.aFloat{animation:float 3.5s ease-in-out infinite}
+.drawPath{stroke-dasharray:300;animation:dashDraw 1.8s ease forwards .5s both}
+
+/* Overline label */
+.lbl{
+  font-size:1rem;font-weight:600;letter-spacing:.2em;
+  text-transform:uppercase;color:rgba(150,102,227,.9);
+}
+
+/* Inputs */
+.inp{
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;color:#fafafa;width:100%;
+  padding:11px 14px;font-size:.875rem;outline:none;
+  transition:border-color .2s;
+}
+.inp:focus{border-color:rgba(150,102,227,.5)}
+.inp::placeholder{color:rgba(255,255,255,.25)}
+
+/* Drop zone */
+.drop{
+  border:1px dashed rgba(150,102,227,.3);border-radius:10px;
+  padding:1.5rem;text-align:center;cursor:pointer;
+  transition:border-color .2s,background .2s;
+}
+.drop:hover{border-color:rgba(150,102,227,.6);background:rgba(150,102,227,.04)}
+
+/* Data table */
+.dt{width:100%;border-collapse:collapse}
+.dt th{
+  font-size:.62rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:rgba(255,255,255,.4);
+  padding:11px 18px;border-bottom:1px solid rgba(255,255,255,.06);
+  text-align:left;background:rgba(0,0,0,.4);white-space:nowrap;cursor:pointer;
+  user-select:none;
+}
+.dt td{
+  padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.04);
+  font-size:.84rem;vertical-align:middle;
+}
+.dt tbody tr:hover{background:rgba(255,255,255,.02)}
+
+/* Responsive */
+@media(max-width:768px){
+  .hidM{display:none!important}
+  .shoM{display:flex!important}
+  .mobCol{flex-direction:column!important}
+}
+@media(min-width:769px){.shoM{display:none!important}}
+
+/* ── Global font size boosts for card content ── */
+.lbl{font-size:.8rem!important}
+.dt th{font-size:.7rem!important}
+.dt td{font-size:.93rem!important}
+.inp{font-size:.95rem!important}
+/* Boost paragraph text in cards */
+.card p{font-size:.925rem;line-height:1.75}
+/* Slightly boost table text */
+.dt td{font-size:.92rem!important}
+
+/* ── Blog ── */
+.bcard{transition:transform .25s ease,border-color .25s ease}
+.bcard:hover{transform:translateY(-4px);border-color:rgba(150,102,227,.4)}
+.tagpill{
+  font-size:.66rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  padding:3px 9px;border-radius:999px;background:rgba(150,102,227,.12);
+  border:1px solid rgba(150,102,227,.25);color:rgba(196,168,242,.95);
+}
+.md{color:rgba(255,255,255,.82);font-size:1.04rem;line-height:1.85;font-weight:300}
+.md h1{font-size:1.9rem;font-weight:800;letter-spacing:-.03em;margin:0 0 1rem;color:#fff}
+.md h2{font-size:1.5rem;font-weight:700;letter-spacing:-.03em;margin:2.4rem 0 .9rem;color:#fff;scroll-margin-top:90px}
+.md h3{font-size:1.18rem;font-weight:600;margin:1.8rem 0 .6rem;color:rgba(255,255,255,.95)}
+.md p{margin:0 0 1.15rem}
+.md ul,.md ol{margin:0 0 1.2rem 1.3rem}
+.md li{margin:.4rem 0}
+.md strong{color:#fff;font-weight:600}
+.md a{color:#1892f3;text-decoration:none;border-bottom:1px solid rgba(24,146,243,.4)}
+.md a:hover{border-bottom-color:#1892f3}
+.md blockquote{border-left:3px solid #9666e3;margin:1.4rem 0;padding:.3rem 0 .3rem 1.2rem;
+  color:rgba(255,255,255,.6);font-style:italic}
+.md code{background:rgba(255,255,255,.07);padding:.12em .4em;border-radius:5px;
+  font-size:.9em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.md pre{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);border-radius:10px;
+  padding:1rem 1.2rem;overflow:auto;margin:0 0 1.3rem}
+.md pre code{background:none;padding:0}
+.md img{max-width:100%;border-radius:12px;margin:1.2rem 0}
+.md hr{border:none;border-top:1px solid rgba(255,255,255,.1);margin:2rem 0}
+.md table{width:100%;border-collapse:collapse;margin:0 0 1.3rem;font-size:.92rem}
+.md th,.md td{border:1px solid rgba(255,255,255,.1);padding:8px 12px;text-align:left}
+.md th{background:rgba(255,255,255,.04);font-weight:600;color:#fff}
+
+/* ══ Mobile overrides ══ */
+@media(max-width:768px){
+  /* Reduce hero padding */
+  section{
+    padding-left:1rem!important;
+    padding-right:1rem!important;
+  }
+
+  /* Bento 12-col grid: go single column */
+  div[style*="repeat(12,1fr)"]{
+    grid-template-columns:1fr!important;
+  }
+  /* Override gridColumn spans in bento children */
+  div[style*="gridColumn"]{
+    grid-column:1!important;
+  }
+
+  /* 2-col grids -> single col */
+  div[style*="gridTemplateColumns:\"1fr 1fr\""]{
+    grid-template-columns:1fr!important;
+  }
+  div[style*='gridTemplateColumns:"1fr 1fr"']{
+    grid-template-columns:1fr!important;
+  }
+
+  /* 3-col testimonials -> single col */
+  div[style*='repeat(3,1fr)']{
+    grid-template-columns:1fr!important;
+  }
+
+  /* Contact layout: sidebar + form */
+  div[style*='"320px 1fr"']{
+    grid-template-columns:1fr!important;
+  }
+
+  /* Contact form: name + email row */
+  form div[style*='"1fr 1fr"']{
+    grid-template-columns:1fr!important;
+  }
+
+  /* Bento cards: limit height on mobile */
+  .card[style*="height:280"], .card[style*="height:420"]{
+    height:auto!important;
+    min-height:220px;
+  }
+
+  /* Prevent cards & SVGs from overflowing horizontally */
+  .card{
+    overflow:hidden!important;
+    max-width:100%!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+  }
+  .card svg{
+    overflow:hidden!important;
+    max-width:100%!important;
+  }
+
+  /* Bento grid children must not exceed viewport */
+  div[style*="repeat(12,1fr)"] > div,
+  div[style*="repeat(12,1fr)"] > div > div{
+    max-width:100%!important;
+    min-width:0!important;
+  }
+
+  /* Founders/blog auto-fit grids */
+  div[style*="minmax(300px"]{
+    grid-template-columns:1fr!important;
+  }
+  div[style*="minmax(320px"]{
+    grid-template-columns:1fr!important;
+  }
+  div[style*="minmax(160px"]{
+    grid-template-columns:1fr 1fr!important;
+  }
+
+  /* Research table wrap */
+  div[style*="overflow:\"auto\""]{
+    overflow-x:auto!important;
+  }
+
+  /* Stat row: 2 per row */
+  div[style*='"gap:\"3rem\"']{
+    gap:1.5rem!important;
+  }
+
+  /* CTA buttons row */
+  div[style*='"justifyContent:\"center\"']{
+    flex-direction:column!important;
+    align-items:stretch!important;
+  }
+  div[style*='"justifyContent:\"center\"'] button,
+  div[style*='"justifyContent:\"center\"'] > *{
+    width:100%!important;
+    text-align:center!important;
+  }
+
+  /* Hero H1 */
+  h1{font-size:clamp(1.9rem,8vw,3rem)!important;line-height:1.1!important}
+
+  /* Nav padding */
+  header > div{padding:.75rem 1rem!important}
+}
+
+/* ── Portfolio dashboard page ── */
+.gbtn{position:relative;border:none;border-radius:12px;cursor:pointer;color:#fff;font-family:'Poppins',sans-serif;font-weight:600;background:linear-gradient(135deg,#9666e3,#1892f3);padding:11px 22px;font-size:.9rem;transition:transform .15s,box-shadow .2s}
+.gbtn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(150,102,227,.45)}
+.gbtn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.gbtn-ghost{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+.tab{padding:8px 16px;border-radius:9px;cursor:pointer;font-size:.85rem;font-weight:500;border:1px solid transparent;color:rgba(255,255,255,.55);background:none}
+.tab.on{background:rgba(150,102,227,.14);border-color:rgba(150,102,227,.3);color:#fff}
+.kpi{background:rgba(255,255,255,.03);border-radius:12px;padding:1rem 1.1rem}
+.kpi .k{font-size:.7rem;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em}
+.kpi .v{font-size:1.5rem;font-weight:600;margin-top:4px}
+.kpi .v.pos{color:#4ade80}
+.kpi .v.neg{color:#f87171}
+.pos{color:#4ade80}.neg{color:#f87171}
+.x{background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem;line-height:1}
+@media(max-width:760px){.rgrid{grid-template-columns:1fr!important}}
+@media(max-width:420px){.kpi .v{font-size:1.3rem}}
+
+/* ════════════════════════════════════════
+   APPLE-DESIGN PASS — additive only, nothing
+   above this point was touched.
+════════════════════════════════════════*/
+
+/* 1. Response — instant feedback on press, not just on release/hover.
+   Applies to every <button> in the app in one shot. */
+button{transition:transform .12s cubic-bezier(.4,0,.2,1),background .2s,color .2s,border-color .2s,box-shadow .2s}
+button:active{transform:scale(.97)}
+.press-surface{transition:transform .12s cubic-bezier(.4,0,.2,1)}
+.press-surface:active{transform:scale(.985)}
+
+/* 2. Modals materialize instead of popping in. */
+@keyframes overlayFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes modalIn{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+/* 3. Expand/collapse reveals via grid-rows (no JS height measurement needed). */
+.reveal{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s cubic-bezier(.4,0,.2,1)}
+.reveal.open{grid-template-rows:1fr}
+.reveal>div{overflow:hidden}
+
+/* 5. Respect the OS-level motion/transparency/contrast preferences. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+@media (prefers-reduced-transparency: reduce){
+  header,.card,.card-sharp{backdrop-filter:none!important}
+}
+
+/* 6. Material weight — a heavier, elevated surface for structural/summary
+   panels (balance tiles, KPI headers), vs. the flatter list rows beneath. */
+.card-elevated{
+  background:rgba(28,28,32,.85);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:16px;
+  backdrop-filter:blur(20px) saturate(140%);
+  box-shadow:0 8px 32px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+/* 4. CSS-driven hover states (replacing onMouseEnter/onMouseLeave DOM
+   mutation) for the hovers that don't depend on other component state. */
+.hov-fade-white{transition:color .18s}
+.hov-fade-white:hover{color:#fff}
+.hov-ghost-btn{transition:background .2s,color .2s}
+.hov-ghost-btn:hover{background:rgba(255,255,255,.09);color:#fff}
+.hov-linkedin-chip{transition:background .15s,color .15s}
+.hov-linkedin-chip:hover{background:rgba(255,255,255,.1);color:#fff}
+.hov-email-chip{transition:background .15s}
+.hov-email-chip:hover{background:rgba(150,102,227,.3)}
+.hov-card-lift{transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease}
+.hov-card-lift:hover{transform:translateY(-4px);border-color:rgba(150,102,227,.4);box-shadow:0 16px 48px rgba(150,102,227,.14)}
+.hov-scale-btn{transition:opacity .15s,transform .15s}
+.hov-scale-btn:hover{opacity:.88;transform:scale(1.04)}
+.hov-blue{transition:color .2s}
+.hov-blue:hover{color:#1892f3}
+.hov-border-purple{transition:border-color .2s}
+.hov-border-purple:hover{border-color:rgba(150,102,227,.4)}
+</style>
+
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo,useCallback} = React;
+
+/* ── Supabase ── */
+const SB_URL="https://eabrlfuaptqbgdwjobav.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhYnJsZnVhcHRxYmdkd2pvYmF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzOTQxMTUsImV4cCI6MjA4Njk3MDExNX0.JOs2xu6wP77TKPRcPySTKyQp0V7ryiQF1ki58xlSueI";
+const sb=window.supabase.createClient(SB_URL,SB_KEY);
+
+/* ── Where the main single-page site lives. Change to your deployed name
+      (e.g. "index.html") if the dashboard file is renamed. ── */
+const SITE="index.html";
+
+const P="#9666e3",B="#1892f3";
+
+/* ── FadeUp (scroll reveal) ── */
+function FadeUp({children,delay=0,className="",style={}}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    const el=ref.current;if(!el)return;
+    el.style.opacity="0";
+    el.style.transform="translateY(22px)";
+    el.style.transition=`opacity .65s cubic-bezier(.22,1,.36,1) ${delay}s,`
+      +`transform .65s cubic-bezier(.22,1,.36,1) ${delay}s`;
+    const obs=new IntersectionObserver(([e])=>{
+      if(e.isIntersecting){el.style.opacity="1";el.style.transform="translateY(0)";obs.disconnect();}
+    },{threshold:.06,rootMargin:"0px 0px -40px 0px"});
+    obs.observe(el);
+    return()=>obs.disconnect();
+  },[delay]);
+  return <div ref={ref} className={className} style={style}>{children}</div>;
+}
+
+/* ── Lightweight cross-page nav (links back to the SPA via hash routes) ── */
+const NAV_LINKS=[["Home","home"],["Research","research"],["Calendar","calendar"],["Dashboard","portfolio"],["Wallet","wallet"],["Contact","contact"]];
+function Nav(){
+  const[open,setOpen]=useState(false);
+  const[sc,setSc]=useState(false);
+  const[user,setUser]=useState(null);
+  useEffect(()=>{
+    const fn=()=>setSc(window.scrollY>30);
+    window.addEventListener("scroll",fn);return()=>window.removeEventListener("scroll",fn);
+  },[]);
+  useEffect(()=>{
+    sb.auth.getSession().then(({data})=>setUser(data.session?data.session.user:null));
+    const{data:s}=sb.auth.onAuthStateChange((_e,sess)=>setUser(sess?sess.user:null));
+    return()=>s.subscription.unsubscribe();
+  },[]);
+  const href=p=>p==="calendar"?"calendar.html":`${SITE}#${p}`;
+  return(
+    <header style={{position:"fixed",top:0,left:0,right:0,zIndex:500,
+      background:sc?"rgba(0,0,0,.92)":"transparent",backdropFilter:sc?"blur(16px)":"none",
+      borderBottom:sc?"1px solid rgba(255,255,255,.06)":"1px solid transparent",transition:"all .3s ease"}}>
+      <div style={{maxWidth:1280,margin:"0 auto",padding:"1rem 2rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <a href={SITE} style={{display:"block",lineHeight:0}}>
+<svg viewBox="160 462 830 152" width="164" height="30" xmlns="http://www.w3.org/2000/svg" style={{display:"block",overflow:"visible"}}>
+            <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#9666e3"/><stop offset="100%" stopColor="#1892f3"/></linearGradient></defs>
+            <path d="M0 0 C0.33 20.46 0.66 40.92 1 62 C7.5278125 52.22375 7.5278125 52.22375 14.1875 42.25 C15.53094482 40.23938477 16.87438965 38.22876953 18.25854492 36.15722656 C19.37428065 34.48508906 20.48992715 32.81289202 21.60546875 31.140625 C22.41256287 29.9338208 22.41256287 29.9338208 23.23596191 28.70263672 C23.80286743 27.85233887 24.36977295 27.00204102 24.95385742 26.12597656 C25.5815654 25.22985657 26.20927338 24.33373657 26.85600281 23.41046143 C28.66901089 20.69580495 30.02780263 17.87323338 31.41218567 14.91912842 C38.09103039 1.59632651 38.09103039 1.59632651 44.69684792 -1.10132599 C52.67381154 -2.82333368 60.76459761 -2.29538867 68.86328125 -1.953125 C71.46775909 -1.91577232 74.0723785 -1.88732667 76.67704773 -1.86737061 C82.80351711 -1.80555986 88.9227218 -1.64200894 95.04601115 -1.44038081 C102.0245898 -1.21565433 109.00354425 -1.10658866 115.98484862 -1.00647211 C130.32775547 -0.79823157 144.66212867 -0.43199371 159 0 C159 12.54 159 25.08 159 38 C135.57 38 112.14 38 88 38 C88 41.63 88 45.26 88 49 C109.45 49 130.9 49 153 49 C153 59.89 153 70.78 153 82 C131.55 82 110.1 82 88 82 C88 86.62 88 91.24 88 96 C112.75 96 137.5 96 163 96 C163 108.54 163 121.08 163 134 C123.4 134 83.8 134 43 134 C42.67 113.87 42.34 93.74 42 73 C29.40434918 91.86462361 29.40434918 91.86462361 16.9375 110.8125 C16.25751953 111.85212891 15.57753906 112.89175781 14.87695312 113.96289062 C13.86858398 115.50686523 13.86858398 115.50686523 12.83984375 117.08203125 C12.17267334 118.05954346 11.50550293 119.03705566 10.81811523 120.04418945 C8.90630183 122.94049671 8.90630183 122.94049671 7.80883789 126.18041992 C6.26470075 129.85265127 5.23256702 131.62001516 2 134 C-5.90724253 135.86459222 -14.40864392 135.01672733 -22.4375 134.6875 C-30.213125 134.460625 -37.98875 134.23375 -46 134 C-46.33 114.2 -46.66 94.4 -47 74 C-51.95 81.26 -56.9 88.52 -62 96 C-67.5 104 -67.5 104 -70.2734375 107.75 C-72.53545083 110.98371212 -73.89907781 114.18723741 -75.2890625 117.875 C-78.14221344 124.46418341 -81.0629674 131.00145706 -88 134 C-103.6498367 137.53059898 -121.16237223 135.33270306 -137 134 C-137.07987474 113.00231259 -136.86659437 92.01756578 -136.53643799 71.02294922 C-136.46347858 66.34670319 -136.39388622 61.67040582 -136.32368469 56.99411774 C-136.21827318 49.99603748 -136.10876764 42.99803249 -136 36 C-120.82 36 -105.64 36 -90 36 C-89.67 44.58 -89.34 53.16 -89 62 C-80.06068089 49.37350665 -80.06068089 49.37350665 -71.20263672 36.68994141 C-69.84494326 34.75127227 -68.46711816 32.82656563 -67.07080078 30.91552734 C-63.49926434 25.96289781 -60.57657687 21.30321757 -58.26171875 15.640625 C-47.35117064 -8.59547688 -23.10034453 -1.43968153 0 0 Z " fill="url(#lg)" transform="translate(392,473)"/>
+        <path d="M0 0 C12.1275 -0.0825 24.255 -0.165 36.75 -0.25 C40.5356543 -0.28641602 44.32130859 -0.32283203 48.22167969 -0.36035156 C97.72244496 -0.64031273 97.72244496 -0.64031273 115.0625 15.25 C123.62050608 24.58745273 126.39266412 36.47194166 126.3125 48.8125 C126.30831055 49.69325195 126.30412109 50.57400391 126.29980469 51.48144531 C126.18640711 58.02231409 125.47135953 63.89054467 123 70 C122.56494141 71.0828125 122.56494141 71.0828125 122.12109375 72.1875 C119.48098447 78.02004268 115.49162565 82.50837435 111 87 C113.31104987 91.47991645 115.62380077 95.9589515 117.9375 100.4375 C118.27814484 101.09705688 118.61878967 101.75661377 118.96975708 102.43615723 C123.44537642 111.0992608 127.94144425 119.74972326 132.56030273 128.33764648 C135 132.89664057 135 132.89664057 135 134 C119.16 134 103.32 134 87 134 C84.40125 128.988125 81.8025 123.97625 79.125 118.8125 C78.30789551 117.23960205 77.49079102 115.6667041 76.64892578 114.04614258 C75.99753804 112.78736698 75.34632218 111.52850241 74.6953125 110.26953125 C74.36007568 109.62576538 74.02483887 108.98199951 73.67944336 108.31872559 C71.93371387 104.93710588 70.33953198 101.56315506 69 98 C67.515 98.495 67.515 98.495 66 99 C64.37280518 99.08143855 62.74248281 99.1075302 61.11328125 99.09765625 C60.26805908 99.09515869 59.42283691 99.09266113 58.55200195 99.09008789 C57.48296631 99.08098389 56.41393066 99.07187988 55.3125 99.0625 C50.2078125 99.0315625 50.2078125 99.0315625 45 99 C45 110.55 45 122.1 45 134 C30.15 134 15.3 134 0 134 C0 89.78 0 45.56 0 0 Z M45 38 C45 45.26 45 52.52 45 60 C49.54230412 60.10800723 54.08203539 60.18733842 58.625 60.25 C59.91019531 60.28351562 61.19539062 60.31703125 62.51953125 60.3515625 C71.62974694 60.61769546 71.62974694 60.61769546 79 56 C81.46672109 52.29991837 81.670778 49.29297922 81 45 C79.10237626 41.64266569 77.81585406 40.33168912 74.24365234 38.87939453 C70.90551894 37.97438501 68.17651722 37.77052953 64.7265625 37.8046875 C63.57285156 37.81113281 62.41914062 37.81757813 61.23046875 37.82421875 C59.44576172 37.84935547 59.44576172 37.84935547 57.625 37.875 C55.80548828 37.88853516 55.80548828 37.88853516 53.94921875 37.90234375 C50.96606071 37.92583318 47.98300468 37.96170179 45 38 Z " fill="#f3f1f3" transform="translate(566,473)"/>
+        <path d="M0 0 C38.28 0 76.56 0 116 0 C116 12.54 116 25.08 116 38 C92.57 38 69.14 38 45 38 C45 41.63 45 45.26 45 49 C66.45 49 87.9 49 110 49 C110 59.89 110 70.78 110 82 C88.55 82 67.1 82 45 82 C45 86.62 45 91.24 45 96 C69.75 96 94.5 96 120 96 C120 108.54 120 121.08 120 134 C80.4 134 40.8 134 0 134 C0 89.78 0 45.56 0 0 Z " fill="#f3f1f3" transform="translate(854,473)"/>
+        <path d="M0 0 C38.28 0 76.56 0 116 0 C116 12.54 116 25.08 116 38 C92.57 38 69.14 38 45 38 C45 41.63 45 45.26 45 49 C66.45 49 87.9 49 110 49 C110 59.89 110 70.78 110 82 C88.55 82 67.1 82 45 82 C45 86.62 45 91.24 45 96 C69.75 96 94.5 96 120 96 C120 108.54 120 121.08 120 134 C80.4 134 40.8 134 0 134 C0 89.78 0 45.56 0 0 Z " fill="#f3f1f3" transform="translate(435,473)"/>
+        <path d="M0 0 C21.09908322 -0.63100062 42.3406024 6.37741683 57.76513672 20.90087891 C62.90486945 26.02993721 67.22187633 31.92266265 68.71484375 39.125 C64.1616683 40.73958551 59.58852839 41.89829 54.8671875 42.88671875 C54.13287003 43.04163284 53.39855255 43.19654694 52.64198303 43.3561554 C51.09857263 43.67994657 49.55473503 44.00170744 48.01049805 44.3215332 C45.65394769 44.81216606 43.30072122 45.31702477 40.94726562 45.82226562 C39.44158963 46.13629721 37.93573578 46.4494775 36.4296875 46.76171875 C35.73060776 46.91372238 35.03152802 47.06572601 34.31126404 47.22233582 C29.60308456 48.17517696 25.992375 48.42969355 21.7578125 46.00390625 C21.14550781 45.56949219 20.53320312 45.13507812 19.90234375 44.6875 C12.12905965 39.68832473 3.77068318 39.33652742 -5.28515625 40.125 C-8.07880177 40.83455735 -8.07880177 40.83455735 -10.28515625 42.125 C-10.61515625 43.115 -10.94515625 44.105 -11.28515625 45.125 C-7.90066764 49.34670421 -4.10116248 50.31803657 0.96484375 51.5 C1.78968262 51.70641113 2.61452148 51.91282227 3.46435547 52.12548828 C7.19531454 53.05459602 10.9354607 53.94215956 14.67871094 54.8203125 C57.51683067 64.87711713 57.51683067 64.87711713 67.27734375 80.125 C71.90858285 88.90700382 73.32010802 98.27526441 71.02734375 108.05859375 C67.47355201 118.73477643 60.65178217 127.09616529 50.91015625 132.75390625 C28.96390165 143.67230474 1.17221561 145.41163361 -22.09765625 137.875 C-38.32390887 132.01173225 -54.11015325 120.80870481 -62.28515625 105.125 C-62.28515625 104.135 -62.28515625 103.145 -62.28515625 102.125 C-56.41565932 100.69211411 -50.54407844 99.26822891 -44.67041016 97.85253906 C-42.67372205 97.36996562 -40.67761917 96.88496389 -38.68212891 96.39746094 C-35.80913322 95.696032 -32.93412682 95.00344302 -30.05859375 94.3125 C-29.17086273 94.09376221 -28.28313171 93.87502441 -27.36849976 93.6496582 C-16.23675665 90.99781397 -16.23675665 90.99781397 -12.1953125 93.33203125 C-11.58558594 93.86183594 -10.97585937 94.39164063 -10.34765625 94.9375 C-3.65401338 100.35373011 3.13199198 102.24362982 11.71484375 102.375 C12.72546875 102.40078125 13.73609375 102.4265625 14.77734375 102.453125 C18.15392282 102.07595393 19.99678827 101.12828955 22.71484375 99.125 C23.78239209 97.19099083 23.78239209 97.19099083 23.71484375 95.125 C20.11220061 89.72103529 13.32550607 89.1871754 7.21875 87.94921875 C5.23860117 87.56864413 3.25811947 87.18979822 1.27734375 86.8125 C-20.29569982 82.48661646 -41.77028876 76.24741779 -55.1015625 57.2890625 C-59.82797854 48.64736453 -60.4611214 38.91685445 -58.08984375 29.48046875 C-54.62537549 19.33933108 -47.81739341 12.59920924 -38.46484375 7.625 C-26.14197461 2.10435462 -13.32898337 0.72910678 0 0 Z " fill="#f3f1f3" transform="translate(175.28515625,468.875)"/>
+        <path d="M0 0 C15.51 0 31.02 0 47 0 C48.39992188 4.00640625 49.79984375 8.0128125 51.2421875 12.140625 C52.39100623 15.42666404 53.54001516 18.71263645 54.68914795 21.99856567 C55.88439479 25.41651823 57.0793417 28.83457481 58.2734375 32.25292969 C63.14364881 46.19404009 68.02343301 60.13191407 72.96728897 74.04711151 C73.62074947 75.88789373 74.27156621 77.72961377 74.92233276 79.5713501 C75.31292877 80.66767761 75.70352478 81.76400513 76.10595703 82.89355469 C76.62030807 84.34214874 76.62030807 84.34214874 77.14505005 85.82000732 C77.81009073 87.94346508 77.81009073 87.94346508 79 89 C79.21138611 88.3864566 79.42277222 87.77291321 79.64056396 87.14077759 C89.66168322 58.05836555 99.71329544 28.98980377 110 0 C125.84 0 141.68 0 158 0 C155.5294405 7.17259211 153.05799784 14.34486106 150.58280945 21.51585388 C149.06564506 25.91150113 147.54917192 30.30738517 146.03369141 34.70361328 C137.60685011 59.14484438 129.13121974 83.56758852 120.5 107.9375 C120.13292938 108.9746817 119.76585876 110.0118634 119.38766479 111.08047485 C118.3535881 114.0007616 117.31783667 116.92044712 116.28125 119.83984375 C115.82468773 121.12835739 115.82468773 121.12835739 115.35890198 122.44290161 C115.07610886 123.23767914 114.79331573 124.03245667 114.50195312 124.85131836 C114.25868286 125.53608749 114.0154126 126.22085663 113.76477051 126.92637634 C112.88877878 129.30156883 111.94020547 131.64948633 111 134 C89.55 134 68.1 134 46 134 C42.885625 125.09 39.77125 116.18 36.5625 107 C28.98401322 85.3325412 21.37069211 63.67812412 13.68383789 42.04882812 C12.11283689 37.62758704 10.54624961 33.20480752 8.9833374 28.78070068 C8.28754074 26.81311332 7.59015933 24.84608602 6.8916626 22.87945557 C5.7629517 19.69860857 4.64061395 16.51557367 3.51953125 13.33203125 C2.99162239 11.84965218 2.99162239 11.84965218 2.45304871 10.33732605 C2.13185562 9.42139175 1.81066254 8.50545746 1.47973633 7.56176758 C1.19350906 6.75193924 0.9072818 5.9421109 0.61238098 5.10774231 C0 3 0 3 0 0 Z " fill="#f3f1f3" transform="translate(691,473)"/>
+          </svg>
+        </a>
+        <nav className="hidM" style={{display:"flex",alignItems:"center",gap:32}}>
+          {NAV_LINKS.map(([l,p])=>(
+            <a key={p} href={href(p)} style={{textDecoration:"none",fontSize:".84rem",fontWeight:500,
+              color:p==="calendar"?"#fff":"rgba(255,255,255,.5)",letterSpacing:"-.01em",transition:"color .2s"}}
+              onMouseEnter={e=>e.target.style.color="#fff"}
+              onMouseLeave={e=>e.target.style.color=p==="calendar"?"#fff":"rgba(255,255,255,.5)"}>{l}</a>
+          ))}
+          <a href={user?`${SITE}#profile`:`${SITE}#profile`} style={{textDecoration:"none",padding:"9px 20px",fontSize:".82rem",
+            fontWeight:600,color:"#fff",borderRadius:10,background:`linear-gradient(135deg,${P},${B})`}}>
+            {user?"Profile":"Log in"}
+          </a>
+        </nav>
+        <button className="shoM" onClick={()=>setOpen(!open)} style={{background:"none",border:"none",cursor:"pointer",color:"#fff",display:"none",fontSize:"1.4rem"}}>{open?"\u2715":"\u2630"}</button>
+      </div>
+      {open&&(
+        <div style={{background:"rgba(0,0,0,.95)",borderTop:"1px solid rgba(255,255,255,.06)",padding:".75rem 2rem 1.25rem",display:"flex",flexDirection:"column",gap:4}}>
+          {NAV_LINKS.map(([l,p])=>(
+            <a key={p} href={href(p)} style={{textDecoration:"none",color:"rgba(255,255,255,.8)",fontWeight:500,padding:"10px 0",fontSize:".9rem",borderBottom:"1px solid rgba(255,255,255,.05)"}}>{l}</a>
+          ))}
+          <a href={`${SITE}#profile`} style={{textDecoration:"none",color:"#fff",fontWeight:600,padding:"10px 0",fontSize:".9rem"}}>{user?"Profile":"Log in"}</a>
+        </div>
+      )}
+    </header>
+  );
+}
+
+/* ════════════════════════════════════════
+   ECONOMIC CALENDAR PAGE
+════════════════════════════════════════*/
+
+const IMPACT_COLORS={High:"#ef4444",Medium:"#f59e0b",Low:"#22c55e"};
+const MOCK_CAL=(()=>{const t=new Date().toISOString().slice(0,10);return[
+  {id:1,slug:"repo-rate",indicator_name:"RBI Monetary Policy Committee",category:"Monetary Policy & Interest Rates",event_date:t,time_start:"10:00:00",impact:"High",previous_value:"5.25%",actual_value:null,expected_value:"5.25%",source:"TE"},
+  {id:2,slug:"cpi",indicator_name:"Consumer Price Index (CPI) Inflation",category:"Inflation",event_date:t,time_start:"17:30:00",impact:"High",previous_value:"3.1%",actual_value:null,expected_value:"3.2%",source:"CMIE"},
+];})();
+
+const fmtTime=t=>{
+  if(!t)return null;
+  const[h,m]=t.split(":").map(Number);
+  const ap=h>=12?"PM":"AM";
+  const h12=h%12===0?12:h%12;
+  return `${h12}:${String(m).padStart(2,"0")} ${ap}`;
+};
+const isoDate=d=>{
+  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),dd=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${dd}`;
+};
+
+function Calendar(){
+  const[events,setEvents]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[ferr,setFerr]=useState(null);
+  const[cursor,setCursor]=useState(()=>{const d=new Date();d.setDate(1);return d;});
+  const[impactFilter,setImpactFilter]=useState(new Set(["High","Medium","Low"]));
+  const today=useMemo(()=>new Date(),[]);
+  const[selDate,setSelDate]=useState(()=>isoDate(today));
+
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      try{
+        const{data,error}=await sb.from("economic_calendar_events").select("*")
+          .order("event_date",{ascending:true}).order("time_start",{ascending:true});
+        if(error)throw error;
+        setEvents(data&&data.length?data:MOCK_CAL);
+        if(!data||!data.length)setFerr("Demo data — live database unavailable.");
+      }catch(e){setEvents(MOCK_CAL);setFerr("Demo data — live database unavailable.");}
+      finally{setLoading(false);}
+    })();
+  },[]);
+
+  const byDate=useMemo(()=>{
+    const m={};
+    events.filter(e=>impactFilter.has(e.impact)).forEach(e=>{
+      (m[e.event_date]=m[e.event_date]||[]).push(e);
+    });
+    return m;
+  },[events,impactFilter]);
+
+  const monthLabel=cursor.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  const changeMonth=delta=>setCursor(c=>{const d=new Date(c);d.setMonth(d.getMonth()+delta);return d;});
+
+  const grid=useMemo(()=>{
+    const year=cursor.getFullYear(),month=cursor.getMonth();
+    const startPad=new Date(year,month,1).getDay();
+    const daysInMonth=new Date(year,month+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<startPad;i++)cells.push(new Date(year,month,1-(startPad-i)));
+    for(let d=1;d<=daysInMonth;d++)cells.push(new Date(year,month,d));
+    while(cells.length%7!==0)cells.push(new Date(year,month,daysInMonth+1+(cells.length-startPad-daysInMonth)));
+    return cells;
+  },[cursor]);
+
+  const toggleImpact=lvl=>setImpactFilter(s=>{
+    const n=new Set(s);
+    if(n.has(lvl)&&n.size>1)n.delete(lvl);else n.add(lvl);
+    return n;
+  });
+
+  const todayISO=isoDate(today);
+  const selEvents=byDate[selDate]||[];
+  const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64}}>
+      <div style={{borderBottom:"1px solid rgba(255,255,255,.06)",padding:"3rem 2rem 2rem"}}>
+        <div style={{maxWidth:1280,margin:"0 auto"}}>
+          <FadeUp>
+            <h1 style={{fontSize:"clamp(1.8rem,4vw,2.4rem)",fontWeight:700,letterSpacing:"-.02em",color:"#fff"}}>
+              India <span className="gt-purple">Economic Calendar</span>
+            </h1>
+            <p style={{marginTop:10,color:"rgba(255,255,255,.55)",fontSize:".95rem",maxWidth:640}}>
+              Key India data releases, RBI policy decisions, and growth indicators — actuals, forecasts, and previous values in one place.
+            </p>
+          </FadeUp>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1280,margin:"0 auto",padding:"2rem"}}>
+        {ferr&&<div style={{marginBottom:16,fontSize:".8rem",color:"rgba(255,255,255,.4)"}}>{ferr}</div>}
+
+        <div style={{display:"flex",flexWrap:"wrap",gap:16,alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <button onClick={()=>changeMonth(-1)} style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",
+              borderRadius:8,width:32,height:32,color:"#fff",cursor:"pointer"}}>‹</button>
+            <div style={{fontWeight:600,fontSize:"1.05rem",minWidth:150,textAlign:"center"}}>{monthLabel}</div>
+            <button onClick={()=>changeMonth(1)} style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",
+              borderRadius:8,width:32,height:32,color:"#fff",cursor:"pointer"}}>›</button>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {["High","Medium","Low"].map(lvl=>(
+              <button key={lvl} onClick={()=>toggleImpact(lvl)} style={{
+                display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,cursor:"pointer",
+                fontSize:".76rem",fontWeight:500,border:`1px solid ${impactFilter.has(lvl)?IMPACT_COLORS[lvl]+"55":"rgba(255,255,255,.1)"}`,
+                background:impactFilter.has(lvl)?IMPACT_COLORS[lvl]+"18":"transparent",
+                color:impactFilter.has(lvl)?"#fff":"rgba(255,255,255,.4)"}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:IMPACT_COLORS[lvl]}}/>{lvl}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card-elevated" style={{padding:"1.25rem"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
+            {DOW.map(d=>(
+              <div key={d} style={{textAlign:"center",fontSize:".7rem",fontWeight:600,letterSpacing:".05em",
+                color:"rgba(255,255,255,.4)",padding:"4px 0"}}>{d.toUpperCase()}</div>
+            ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+            {grid.map((d,i)=>{
+              const iso=isoDate(d);
+              const inMonth=d.getMonth()===cursor.getMonth();
+              const dayEvents=byDate[iso]||[];
+              const isToday=iso===todayISO;
+              const isSel=iso===selDate;
+              return(
+                <button key={i} onClick={()=>setSelDate(iso)} style={{
+                  minHeight:74,textAlign:"left",borderRadius:10,padding:"6px 8px",cursor:"pointer",
+                  background:isSel?"rgba(150,102,227,.14)":"rgba(255,255,255,.02)",
+                  border:isToday?"1px solid rgba(150,102,227,.6)":"1px solid rgba(255,255,255,.05)",
+                  opacity:inMonth?1:.35}}>
+                  <div style={{fontSize:".78rem",fontWeight:isToday?700:500,color:isToday?P:"#fff"}}>{d.getDate()}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:6}}>
+                    {dayEvents.slice(0,4).map(e=>(
+                      <span key={e.id} title={e.indicator_name} style={{width:6,height:6,borderRadius:"50%",
+                        background:IMPACT_COLORS[e.impact]||"rgba(255,255,255,.3)"}}/>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{marginTop:28}}>
+          <h3 style={{fontSize:"1.1rem",fontWeight:600,marginBottom:14,color:"#fff"}}>
+            {selDate===todayISO?"Today's Events":new Date(selDate+"T00:00:00").toLocaleDateString("en-US",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+          </h3>
+          {loading?(
+            <div style={{color:"rgba(255,255,255,.4)",fontSize:".85rem"}}>Loading…</div>
+          ):selEvents.length===0?(
+            <div className="card" style={{padding:"1.5rem",color:"rgba(255,255,255,.4)",fontSize:".85rem"}}>No tracked releases on this day.</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {selEvents.map(e=>(
+                <div key={e.id} className="card-sharp" style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                  <div style={{width:74,fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:500}}>{fmtTime(e.time_start)||"—"}</div>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:IMPACT_COLORS[e.impact]||"#666",flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:180}}>
+                    <div style={{fontWeight:600,fontSize:".92rem",color:"#fff"}}>{e.indicator_name}</div>
+                    {e.category&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginTop:2}}>{e.category}</div>}
+                  </div>
+                  <div style={{display:"flex",gap:22,fontSize:".8rem"}}>
+                    <div><div style={{color:"rgba(255,255,255,.4)",fontSize:".68rem"}}>Previous</div><div style={{color:"#fff"}}>{e.previous_value||"—"}</div></div>
+                    <div><div style={{color:"rgba(255,255,255,.4)",fontSize:".68rem"}}>Actual</div><div style={{fontWeight:600,color:e.actual_value?"#fff":"rgba(255,255,255,.3)"}}>{e.actual_value||"—"}</div></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{marginTop:28,fontSize:".72rem",color:"rgba(255,255,255,.3)",lineHeight:1.6}}>
+          Disclaimer: dates are for general informational purposes and may change without notice. Verify against official sources before relying on them.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Footer ── */
+function Foot(){
+  const links=[["Research Hub","research"],["Contact","contact"]];
+  return(
+    <footer style={{borderTop:"1px solid rgba(255,255,255,.06)",padding:"2.5rem 2rem 1.75rem",background:"#000"}}>
+      <div style={{maxWidth:1280,margin:"0 auto",textAlign:"center"}}>
+        <div style={{display:"flex",gap:22,justifyContent:"center",marginBottom:"1rem",flexWrap:"wrap"}}>
+          {links.map(([l,p])=>(
+            <a key={p} href={`${SITE}#${p}`} className="hov-fade-white" style={{textDecoration:"none",color:"rgba(255,255,255,.4)",fontSize:".78rem"}}>{l}</a>
+          ))}
+        </div>
+        <p style={{color:"rgba(255,255,255,.18)",fontSize:".68rem"}}>© {new Date().getFullYear()} Swerve Financial Research. All rights reserved.</p>
+      </div>
+    </footer>
+  );
+}
+
+function App(){
+  return(<><Nav/><main><Calendar/></main><Foot/></>);
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
