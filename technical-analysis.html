@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Swerve — Technical Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',sans-serif;color:#fafafa;min-height:100vh;
+  background:radial-gradient(circle at 20% 30%,rgba(99,102,241,.15),transparent 40%),
+             radial-gradient(circle at 80% 70%,rgba(59,130,246,.15),transparent 40%),#000;}
+.page{max-width:1180px;margin:0 auto;padding:3rem 1.5rem 5rem;color:#fafafa}
+.gt-purple{background:linear-gradient(135deg,#9666e3,#1892f3);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.card{background:rgba(24,24,27,.95);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:1.5rem;margin-bottom:1.5rem}
+.lbl{font-size:.72rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:rgba(150,102,227,.9)}
+.inp{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#fafafa;padding:10px 13px;font-size:.9rem;outline:none;font-family:'Poppins',sans-serif}
+.inp:focus{border-color:rgba(150,102,227,.5)}
+.gbtn{border:none;border-radius:12px;cursor:pointer;color:#fff;font-family:'Poppins',sans-serif;font-weight:600;background:linear-gradient(135deg,#9666e3,#1892f3);padding:11px 22px;font-size:.9rem;transition:transform .15s,box-shadow .2s}
+.gbtn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(150,102,227,.45)}
+.gbtn:disabled{opacity:.5;cursor:not-allowed}
+.chip{padding:6px 12px;border-radius:9px;cursor:pointer;font-size:.8rem;font-weight:500;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);background:rgba(255,255,255,.04);user-select:none;transition:.15s}
+.chip.on{background:rgba(150,102,227,.16);border-color:rgba(150,102,227,.45);color:#fff}
+.chip.sm{padding:5px 10px;font-size:.76rem}
+.kpi{background:rgba(255,255,255,.03);border-radius:12px;padding:1rem 1.1rem}
+.kpi .k{font-size:.7rem;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em}
+.kpi .v{font-size:1.4rem;font-weight:700;margin-top:4px;color:#fafafa}
+.pos{color:#4ade80}.neg{color:#f87171}
+table{width:100%;border-collapse:collapse}
+th{font-size:.66rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left}
+td{padding:9px 12px;font-size:.86rem;color:#fafafa;border-bottom:1px solid rgba(255,255,255,.04)}
+.muted{color:rgba(255,255,255,.5)}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:600}
+.badge.bull{background:rgba(74,222,128,.14);color:#4ade80}.badge.bear{background:rgba(248,113,113,.14);color:#f87171}.badge.neut{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7)}
+.ctl-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:1rem}
+.ctl-lbl{font-size:.7rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;width:70px;flex-shrink:0}
+#tt{position:absolute;pointer-events:none;z-index:20;display:none;background:rgba(10,10,12,.92);border:1px solid rgba(150,102,227,.4);
+  border-radius:9px;padding:8px 11px;font-size:.76rem;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.5);white-space:nowrap}
+#tt b{color:#c4a8f2}
+/* segmented control (sliding highlight) */
+.seg{position:relative;display:flex;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:3px;gap:0;flex:1;min-width:0}
+.seg .seg-hl{position:absolute;top:3px;bottom:3px;border-radius:8px;background:linear-gradient(135deg,rgba(150,102,227,.9),rgba(24,146,243,.9));transition:transform .22s ease,width .22s ease;z-index:0}
+.seg button{position:relative;z-index:1;flex:1;min-width:0;border:none;background:none;color:rgba(255,255,255,.6);font-family:'Poppins',sans-serif;font-size:.78rem;font-weight:500;padding:7px 4px;cursor:pointer;border-radius:8px;transition:color .2s;white-space:nowrap}
+.seg button.on{color:#fff}
+.seg button:active{transform:scale(.98)}
+/* text shimmer */
+.shimmer{background:linear-gradient(90deg,rgba(255,255,255,.3) 30%,#fff 50%,rgba(255,255,255,.3) 70%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 1.1s linear infinite}
+@keyframes shim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* mode tabs (animated hover cards) */
+.modewrap{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:rgba(24,24,27,.6);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:5px;margin-bottom:1.4rem}
+.mode-hl{position:absolute;top:5px;bottom:5px;border-radius:10px;background:rgba(150,102,227,.16);border:1px solid rgba(150,102,227,.35);transition:transform .28s cubic-bezier(.4,0,.2,1),width .28s cubic-bezier(.4,0,.2,1),opacity .2s;z-index:0;opacity:0}
+.modecard{position:relative;z-index:1;padding:11px 16px;border-radius:10px;cursor:pointer;user-select:none}
+.modecard h4{font-size:.92rem;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:2px}
+.modecard p{font-size:.72rem;color:rgba(255,255,255,.4);line-height:1.3}
+.modecard.on h4{color:#fff}.modecard.on p{color:rgba(255,255,255,.6)}
+/* pattern picker (search + tokens) */
+.pickwrap{position:relative;flex:1;min-width:220px}
+.tok{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;padding:4px 6px 4px 10px;border-radius:16px;background:rgba(150,102,227,.16);border:1px solid rgba(150,102,227,.35);color:#fff}
+.tok .x{cursor:pointer;color:rgba(255,255,255,.55);font-size:1rem;line-height:1;background:none;border:none}
+.sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:rgba(18,18,22,.98);border:1px solid rgba(150,102,227,.35);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);max-height:260px;overflow-y:auto;display:none}
+.sugg div{padding:8px 12px;font-size:.82rem;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
+.sugg div:hover,.sugg div.hi{background:rgba(150,102,227,.18)}
+.sugg .tag{font-size:.66rem;color:rgba(255,255,255,.4)}
+/* ── Cross-page brand nav (calendar / home style) ── */
+body{padding-top:56px}
+#swerve-nav{position:fixed;top:0;left:0;right:0;z-index:500;background:transparent;border-bottom:1px solid transparent;transition:all .3s ease}
+#swerve-nav.scrolled{background:rgba(0,0,0,.92);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.06)}
+#swerve-nav .navwrap{max-width:1280px;margin:0 auto;padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between}
+#swerve-nav .brand{display:block;line-height:0}
+#swerve-nav .links{display:flex;align-items:center;gap:32px}
+#swerve-nav .links a{text-decoration:none;font-size:.84rem;font-weight:500;color:rgba(255,255,255,.5);letter-spacing:-.01em;transition:color .2s}
+#swerve-nav .links a:hover,#swerve-nav .links a.active{color:#fff}
+#swerve-nav .loginbtn{text-decoration:none;padding:9px 20px;font-size:.82rem;font-weight:600;color:#fff;border-radius:10px;background:linear-gradient(135deg,#9666e3,#1892f3)}
+#swerve-nav .menu-toggle{display:none;background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer}
+#swerve-nav .mobile{display:none;background:rgba(0,0,0,.95);border-top:1px solid rgba(255,255,255,.06);padding:.75rem 2rem 1.25rem;flex-direction:column;gap:4px}
+#swerve-nav .mobile a{text-decoration:none;color:rgba(255,255,255,.8);font-weight:500;padding:10px 0;font-size:.9rem;border-bottom:1px solid rgba(255,255,255,.05)}
+@media(max-width:768px){#swerve-nav .links{display:none}#swerve-nav .menu-toggle{display:block}#swerve-nav .mobile.open{display:flex}}
+</style></head><body>
+<nav id="swerve-nav">
+  <div class="navwrap">
+    <a class="brand" href="/"><svg viewBox="160 462 830 152" width="164" height="30" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible">
+            <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#9666e3"/><stop offset="100%" stop-color="#1892f3"/></linearGradient></defs>
+            <path d="M0 0 C0.33 20.46 0.66 40.92 1 62 C7.5278125 52.22375 7.5278125 52.22375 14.1875 42.25 C15.53094482 40.23938477 16.87438965 38.22876953 18.25854492 36.15722656 C19.37428065 34.48508906 20.48992715 32.81289202 21.60546875 31.140625 C22.41256287 29.9338208 22.41256287 29.9338208 23.23596191 28.70263672 C23.80286743 27.85233887 24.36977295 27.00204102 24.95385742 26.12597656 C25.5815654 25.22985657 26.20927338 24.33373657 26.85600281 23.41046143 C28.66901089 20.69580495 30.02780263 17.87323338 31.41218567 14.91912842 C38.09103039 1.59632651 38.09103039 1.59632651 44.69684792 -1.10132599 C52.67381154 -2.82333368 60.76459761 -2.29538867 68.86328125 -1.953125 C71.46775909 -1.91577232 74.0723785 -1.88732667 76.67704773 -1.86737061 C82.80351711 -1.80555986 88.9227218 -1.64200894 95.04601115 -1.44038081 C102.0245898 -1.21565433 109.00354425 -1.10658866 115.98484862 -1.00647211 C130.32775547 -0.79823157 144.66212867 -0.43199371 159 0 C159 12.54 159 25.08 159 38 C135.57 38 112.14 38 88 38 C88 41.63 88 45.26 88 49 C109.45 49 130.9 49 153 49 C153 59.89 153 70.78 153 82 C131.55 82 110.1 82 88 82 C88 86.62 88 91.24 88 96 C112.75 96 137.5 96 163 96 C163 108.54 163 121.08 163 134 C123.4 134 83.8 134 43 134 C42.67 113.87 42.34 93.74 42 73 C29.40434918 91.86462361 29.40434918 91.86462361 16.9375 110.8125 C16.25751953 111.85212891 15.57753906 112.89175781 14.87695312 113.96289062 C13.86858398 115.50686523 13.86858398 115.50686523 12.83984375 117.08203125 C12.17267334 118.05954346 11.50550293 119.03705566 10.81811523 120.04418945 C8.90630183 122.94049671 8.90630183 122.94049671 7.80883789 126.18041992 C6.26470075 129.85265127 5.23256702 131.62001516 2 134 C-5.90724253 135.86459222 -14.40864392 135.01672733 -22.4375 134.6875 C-30.213125 134.460625 -37.98875 134.23375 -46 134 C-46.33 114.2 -46.66 94.4 -47 74 C-51.95 81.26 -56.9 88.52 -62 96 C-67.5 104 -67.5 104 -70.2734375 107.75 C-72.53545083 110.98371212 -73.89907781 114.18723741 -75.2890625 117.875 C-78.14221344 124.46418341 -81.0629674 131.00145706 -88 134 C-103.6498367 137.53059898 -121.16237223 135.33270306 -137 134 C-137.07987474 113.00231259 -136.86659437 92.01756578 -136.53643799 71.02294922 C-136.46347858 66.34670319 -136.39388622 61.67040582 -136.32368469 56.99411774 C-136.21827318 49.99603748 -136.10876764 42.99803249 -136 36 C-120.82 36 -105.64 36 -90 36 C-89.67 44.58 -89.34 53.16 -89 62 C-80.06068089 49.37350665 -80.06068089 49.37350665 -71.20263672 36.68994141 C-69.84494326 34.75127227 -68.46711816 32.82656563 -67.07080078 30.91552734 C-63.49926434 25.96289781 -60.57657687 21.30321757 -58.26171875 15.640625 C-47.35117064 -8.59547688 -23.10034453 -1.43968153 0 0 Z " fill="url(#lg)" transform="translate(392,473)"/>
+        <path d="M0 0 C12.1275 -0.0825 24.255 -0.165 36.75 -0.25 C40.5356543 -0.28641602 44.32130859 -0.32283203 48.22167969 -0.36035156 C97.72244496 -0.64031273 97.72244496 -0.64031273 115.0625 15.25 C123.62050608 24.58745273 126.39266412 36.47194166 126.3125 48.8125 C126.30831055 49.69325195 126.30412109 50.57400391 126.29980469 51.48144531 C126.18640711 58.02231409 125.47135953 63.89054467 123 70 C122.56494141 71.0828125 122.56494141 71.0828125 122.12109375 72.1875 C119.48098447 78.02004268 115.49162565 82.50837435 111 87 C113.31104987 91.47991645 115.62380077 95.9589515 117.9375 100.4375 C118.27814484 101.09705688 118.61878967 101.75661377 118.96975708 102.43615723 C123.44537642 111.0992608 127.94144425 119.74972326 132.56030273 128.33764648 C135 132.89664057 135 132.89664057 135 134 C119.16 134 103.32 134 87 134 C84.40125 128.988125 81.8025 123.97625 79.125 118.8125 C78.30789551 117.23960205 77.49079102 115.6667041 76.64892578 114.04614258 C75.99753804 112.78736698 75.34632218 111.52850241 74.6953125 110.26953125 C74.36007568 109.62576538 74.02483887 108.98199951 73.67944336 108.31872559 C71.93371387 104.93710588 70.33953198 101.56315506 69 98 C67.515 98.495 67.515 98.495 66 99 C64.37280518 99.08143855 62.74248281 99.1075302 61.11328125 99.09765625 C60.26805908 99.09515869 59.42283691 99.09266113 58.55200195 99.09008789 C57.48296631 99.08098389 56.41393066 99.07187988 55.3125 99.0625 C50.2078125 99.0315625 50.2078125 99.0315625 45 99 C45 110.55 45 122.1 45 134 C30.15 134 15.3 134 0 134 C0 89.78 0 45.56 0 0 Z M45 38 C45 45.26 45 52.52 45 60 C49.54230412 60.10800723 54.08203539 60.18733842 58.625 60.25 C59.91019531 60.28351562 61.19539062 60.31703125 62.51953125 60.3515625 C71.62974694 60.61769546 71.62974694 60.61769546 79 56 C81.46672109 52.29991837 81.670778 49.29297922 81 45 C79.10237626 41.64266569 77.81585406 40.33168912 74.24365234 38.87939453 C70.90551894 37.97438501 68.17651722 37.77052953 64.7265625 37.8046875 C63.57285156 37.81113281 62.41914062 37.81757813 61.23046875 37.82421875 C59.44576172 37.84935547 59.44576172 37.84935547 57.625 37.875 C55.80548828 37.88853516 55.80548828 37.88853516 53.94921875 37.90234375 C50.96606071 37.92583318 47.98300468 37.96170179 45 38 Z " fill="#f3f1f3" transform="translate(566,473)"/>
+        <path d="M0 0 C38.28 0 76.56 0 116 0 C116 12.54 116 25.08 116 38 C92.57 38 69.14 38 45 38 C45 41.63 45 45.26 45 49 C66.45 49 87.9 49 110 49 C110 59.89 110 70.78 110 82 C88.55 82 67.1 82 45 82 C45 86.62 45 91.24 45 96 C69.75 96 94.5 96 120 96 C120 108.54 120 121.08 120 134 C80.4 134 40.8 134 0 134 C0 89.78 0 45.56 0 0 Z " fill="#f3f1f3" transform="translate(854,473)"/>
+        <path d="M0 0 C38.28 0 76.56 0 116 0 C116 12.54 116 25.08 116 38 C92.57 38 69.14 38 45 38 C45 41.63 45 45.26 45 49 C66.45 49 87.9 49 110 49 C110 59.89 110 70.78 110 82 C88.55 82 67.1 82 45 82 C45 86.62 45 91.24 45 96 C69.75 96 94.5 96 120 96 C120 108.54 120 121.08 120 134 C80.4 134 40.8 134 0 134 C0 89.78 0 45.56 0 0 Z " fill="#f3f1f3" transform="translate(435,473)"/>
+        <path d="M0 0 C21.09908322 -0.63100062 42.3406024 6.37741683 57.76513672 20.90087891 C62.90486945 26.02993721 67.22187633 31.92266265 68.71484375 39.125 C64.1616683 40.73958551 59.58852839 41.89829 54.8671875 42.88671875 C54.13287003 43.04163284 53.39855255 43.19654694 52.64198303 43.3561554 C51.09857263 43.67994657 49.55473503 44.00170744 48.01049805 44.3215332 C45.65394769 44.81216606 43.30072122 45.31702477 40.94726562 45.82226562 C39.44158963 46.13629721 37.93573578 46.4494775 36.4296875 46.76171875 C35.73060776 46.91372238 35.03152802 47.06572601 34.31126404 47.22233582 C29.60308456 48.17517696 25.992375 48.42969355 21.7578125 46.00390625 C21.14550781 45.56949219 20.53320312 45.13507812 19.90234375 44.6875 C12.12905965 39.68832473 3.77068318 39.33652742 -5.28515625 40.125 C-8.07880177 40.83455735 -8.07880177 40.83455735 -10.28515625 42.125 C-10.61515625 43.115 -10.94515625 44.105 -11.28515625 45.125 C-7.90066764 49.34670421 -4.10116248 50.31803657 0.96484375 51.5 C1.78968262 51.70641113 2.61452148 51.91282227 3.46435547 52.12548828 C7.19531454 53.05459602 10.9354607 53.94215956 14.67871094 54.8203125 C57.51683067 64.87711713 57.51683067 64.87711713 67.27734375 80.125 C71.90858285 88.90700382 73.32010802 98.27526441 71.02734375 108.05859375 C67.47355201 118.73477643 60.65178217 127.09616529 50.91015625 132.75390625 C28.96390165 143.67230474 1.17221561 145.41163361 -22.09765625 137.875 C-38.32390887 132.01173225 -54.11015325 120.80870481 -62.28515625 105.125 C-62.28515625 104.135 -62.28515625 103.145 -62.28515625 102.125 C-56.41565932 100.69211411 -50.54407844 99.26822891 -44.67041016 97.85253906 C-42.67372205 97.36996562 -40.67761917 96.88496389 -38.68212891 96.39746094 C-35.80913322 95.696032 -32.93412682 95.00344302 -30.05859375 94.3125 C-29.17086273 94.09376221 -28.28313171 93.87502441 -27.36849976 93.6496582 C-16.23675665 90.99781397 -16.23675665 90.99781397 -12.1953125 93.33203125 C-11.58558594 93.86183594 -10.97585937 94.39164063 -10.34765625 94.9375 C-3.65401338 100.35373011 3.13199198 102.24362982 11.71484375 102.375 C12.72546875 102.40078125 13.73609375 102.4265625 14.77734375 102.453125 C18.15392282 102.07595393 19.99678827 101.12828955 22.71484375 99.125 C23.78239209 97.19099083 23.78239209 97.19099083 23.71484375 95.125 C20.11220061 89.72103529 13.32550607 89.1871754 7.21875 87.94921875 C5.23860117 87.56864413 3.25811947 87.18979822 1.27734375 86.8125 C-20.29569982 82.48661646 -41.77028876 76.24741779 -55.1015625 57.2890625 C-59.82797854 48.64736453 -60.4611214 38.91685445 -58.08984375 29.48046875 C-54.62537549 19.33933108 -47.81739341 12.59920924 -38.46484375 7.625 C-26.14197461 2.10435462 -13.32898337 0.72910678 0 0 Z " fill="#f3f1f3" transform="translate(175.28515625,468.875)"/>
+        <path d="M0 0 C15.51 0 31.02 0 47 0 C48.39992188 4.00640625 49.79984375 8.0128125 51.2421875 12.140625 C52.39100623 15.42666404 53.54001516 18.71263645 54.68914795 21.99856567 C55.88439479 25.41651823 57.0793417 28.83457481 58.2734375 32.25292969 C63.14364881 46.19404009 68.02343301 60.13191407 72.96728897 74.04711151 C73.62074947 75.88789373 74.27156621 77.72961377 74.92233276 79.5713501 C75.31292877 80.66767761 75.70352478 81.76400513 76.10595703 82.89355469 C76.62030807 84.34214874 76.62030807 84.34214874 77.14505005 85.82000732 C77.81009073 87.94346508 77.81009073 87.94346508 79 89 C79.21138611 88.3864566 79.42277222 87.77291321 79.64056396 87.14077759 C89.66168322 58.05836555 99.71329544 28.98980377 110 0 C125.84 0 141.68 0 158 0 C155.5294405 7.17259211 153.05799784 14.34486106 150.58280945 21.51585388 C149.06564506 25.91150113 147.54917192 30.30738517 146.03369141 34.70361328 C137.60685011 59.14484438 129.13121974 83.56758852 120.5 107.9375 C120.13292938 108.9746817 119.76585876 110.0118634 119.38766479 111.08047485 C118.3535881 114.0007616 117.31783667 116.92044712 116.28125 119.83984375 C115.82468773 121.12835739 115.82468773 121.12835739 115.35890198 122.44290161 C115.07610886 123.23767914 114.79331573 124.03245667 114.50195312 124.85131836 C114.25868286 125.53608749 114.0154126 126.22085663 113.76477051 126.92637634 C112.88877878 129.30156883 111.94020547 131.64948633 111 134 C89.55 134 68.1 134 46 134 C42.885625 125.09 39.77125 116.18 36.5625 107 C28.98401322 85.3325412 21.37069211 63.67812412 13.68383789 42.04882812 C12.11283689 37.62758704 10.54624961 33.20480752 8.9833374 28.78070068 C8.28754074 26.81311332 7.59015933 24.84608602 6.8916626 22.87945557 C5.7629517 19.69860857 4.64061395 16.51557367 3.51953125 13.33203125 C2.99162239 11.84965218 2.99162239 11.84965218 2.45304871 10.33732605 C2.13185562 9.42139175 1.81066254 8.50545746 1.47973633 7.56176758 C1.19350906 6.75193924 0.9072818 5.9421109 0.61238098 5.10774231 C0 3 0 3 0 0 Z " fill="#f3f1f3" transform="translate(691,473)"/>
+          </svg></a>
+    <div class="links">
+      <a href="/">Home</a>
+      <a href="/research">Research</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/technical-analysis" class="active">Technical Analysis</a>
+      <a href="/wallet">Wallet</a>
+      <a href="/contact">Contact</a>
+      <a class="loginbtn" id="ta-login" href="/profile">Log in</a>
+    </div>
+    <button class="menu-toggle" id="ta-menu" aria-label="Menu">&#9776;</button>
+  </div>
+  <div class="mobile" id="ta-mobile">
+    <a href="/">Home</a>
+    <a href="/research">Research</a>
+    <a href="/calendar">Calendar</a>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/technical-analysis">Technical Analysis</a>
+    <a href="/wallet">Wallet</a>
+    <a href="/contact">Contact</a>
+    <a href="/profile" id="ta-login-m">Log in</a>
+  </div>
+</nav>
+<div id="tt"></div>
+<div class="page">
+<div class="lbl">Swerve Markets</div>
+<h1 style="font-size:2.1rem;font-weight:800;margin:.2rem 0 .3rem"><span class="gt-purple">Technical Analysis</span></h1>
+<p style="color:rgba(255,255,255,.55);margin-bottom:1.6rem;max-width:660px">Live candlestick charting with moving averages, Bollinger Bands, RSI &amp; MACD, support/resistance, and candlestick-pattern detection. Any Yahoo or Bloomberg ticker.</p>
+
+<!-- Mode switcher (animated hover cards) -->
+<div class="modewrap" id="modes">
+  <div class="mode-hl" id="mode-hl"></div>
+  <div class="modecard on" data-m="chart"><h4>Chart</h4><p>Price, indicators &amp; patterns</p></div>
+  <div class="modecard" data-m="backtest"><h4>Backtest</h4><p>Test a pattern strategy</p></div>
+  <div class="modecard" data-m="screener"><h4>Screener</h4><p>Scan a sector for a pattern</p></div>
+</div>
+
+<!-- Ticker / period / interval (Chart + Backtest modes) -->
+<div class="card" id="card-controls">
+  <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div><div class="lbl" style="margin-bottom:6px">Ticker</div>
+      <input id="tk" class="inp" style="width:180px" value="AAPL" placeholder="AAPL, 9988.HK, RJHI:AB"/></div>
+    <button class="gbtn" id="go">Load</button>
+    <span id="status" style="font-size:.82rem;color:rgba(255,255,255,.5)"></span>
+  </div>
+  <div class="ctl-row"><span class="ctl-lbl">Period</span><div class="seg" id="per"><div class="seg-hl"></div></div></div>
+  <div class="ctl-row"><span class="ctl-lbl">Interval</span><div class="seg" id="ivl"><div class="seg-hl"></div></div></div>
+</div>
+
+<!-- ===== CHART MODE ===== -->
+<div id="mode-chart">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="lbl">Price &amp; overlays</div><div id="chtitle" style="font-size:.8rem;color:rgba(255,255,255,.45)"></div></div>
+    <div id="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.1rem"></div>
+    <div class="ctl-row" style="margin-top:0;margin-bottom:.8rem"><span class="ctl-lbl">Indicators</span><div id="ind" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
+    <div class="ctl-row" style="margin-top:0;margin-bottom:.6rem;align-items:flex-start"><span class="ctl-lbl" style="padding-top:9px">Patterns</span>
+      <div class="pickwrap">
+        <input id="patsearch" class="inp" style="width:100%" placeholder="Search patterns to overlay — e.g. engulfing, hammer, head &amp; shoulders"/>
+        <div class="sugg" id="patsugg"></div>
+      </div>
+      <button class="chip sm" id="patclear" style="align-self:center">Clear</button></div>
+    <div id="pattokens" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 1rem 78px"></div>
+    <div id="chart" style="height:430px;width:100%;position:relative"></div>
+    <div id="osc" style="height:170px;width:100%;margin-top:8px"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+    <div class="card"><div class="lbl" style="margin-bottom:1rem">Detected patterns (recent)</div>
+      <table><thead><tr><th>Date</th><th>Pattern</th><th>Signal</th></tr></thead><tbody id="pat"></tbody></table></div>
+    <div class="card"><div class="lbl" style="margin-bottom:1rem">Support &amp; resistance</div>
+      <table><thead><tr><th>Level</th><th>Type</th><th>Price</th></tr></thead><tbody id="sr"></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="lbl">Chart patterns — Head &amp; Shoulders · Flags · Pennants</div>
+      <span class="muted" style="font-size:.75rem">click a row to overlay it on the chart</span></div>
+    <table><thead><tr><th>Pattern</th><th>Signal</th><th>Start</th><th>Head/Tip</th><th>Confirmed</th><th>Fit r²</th></tr></thead><tbody id="cx"></tbody></table>
+  </div>
+</div>
+
+<!-- ===== BACKTEST MODE ===== -->
+<div id="mode-backtest" style="display:none">
+  <div class="card">
+    <div class="lbl" style="margin-bottom:1rem">Strategy backtest — <span class="muted" style="text-transform:none;letter-spacing:0">uses the ticker &amp; period above</span></div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Buy when</div><select id="bt-entry" class="inp" style="font-size:.82rem"></select></div>
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Sell when</div><select id="bt-exit" class="inp" style="font-size:.82rem"></select></div>
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Capital</div><input id="bt-cap" class="inp" type="number" style="width:120px" value="100000"/></div>
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Position %</div><input id="bt-pos" class="inp" type="number" style="width:90px" value="100"/></div>
+      <button class="gbtn" id="bt-run">Run backtest</button>
+      <span id="bt-status" class="muted" style="font-size:.8rem"></span>
+    </div>
+    <div id="bt-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:1.2rem"></div>
+    <div id="bt-eqwrap" style="display:none"><div class="lbl" style="margin:1.2rem 0 .6rem">Equity curve vs buy &amp; hold</div><div id="bt-eq" style="height:200px;width:100%"></div></div>
+    <div id="bt-tradeswrap" style="display:none;overflow-x:auto;margin-top:1rem"><table><thead><tr><th>Entry</th><th>Entry price</th><th>Exit</th><th>Exit price</th><th>P&amp;L %</th></tr></thead><tbody id="bt-trades"></tbody></table></div>
+  </div>
+</div>
+
+<!-- ===== SCREENER MODE ===== -->
+<div id="mode-screener" style="display:none">
+  <div class="card">
+    <div class="lbl" style="margin-bottom:1rem">Sector screener</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Sector</div><select id="sc-sector" class="inp" style="font-size:.82rem"></select></div>
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Pattern</div><select id="sc-pat" class="inp" style="font-size:.82rem"></select></div>
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">History</div><select id="sc-period" class="inp" style="font-size:.82rem"><option value="3mo">3 months</option><option value="6mo" selected>6 months</option><option value="1y">1 year</option><option value="2y">2 years</option></select></div>
+      <div><div class="ctl-lbl" style="width:auto;margin-bottom:5px">Seen in last</div><select id="sc-lb" class="inp" style="font-size:.82rem"><option value="1">1 bar</option><option value="3">3 bars</option><option value="5" selected>5 bars</option><option value="10">10 bars</option><option value="20">20 bars</option><option value="40">40 bars</option><option value="60">60 bars</option></select></div>
+      <button class="gbtn" id="sc-run">Scan</button>
+      <span id="sc-status" class="muted" style="font-size:.8rem"></span>
+    </div>
+    <div style="overflow-x:auto;margin-top:1rem"><table><thead><tr><th>Ticker</th><th>Company</th><th>Signal date</th><th>Last close</th></tr></thead><tbody id="sc-res"></tbody></table></div>
+  </div>
+</div>
+</div>
+<script>
+const API="https://swerve-nav-api.onrender.com";
+const SYMS={USD:'$',INR:'₹',HKD:'HK$',CNY:'¥',JPY:'¥',TWD:'NT$',KRW:'₩',GBp:'p',GBP:'£',EUR:'€',CHF:'CHF ',SEK:'kr ',NOK:'kr ',DKK:'kr ',SGD:'S$',AUD:'A$',NZD:'NZ$',CAD:'C$',BRL:'R$',MXN:'MX$',CLP:'CLP ',ARS:'AR$',IDR:'Rp',THB:'฿',MYR:'RM',PHP:'₱',VND:'₫',ZAR:'R ',SAR:'SAR ',QAR:'QAR ',AED:'AED ',ILS:'₪',TRY:'₺',PLN:'zł ',RUB:'₽'};
+const symOf=c=>SYMS[c]||((c||"")+" ");
+let CUR="USD", SYM="$";
+const money=v=>v==null?"—":(SYM+Number(v).toFixed(2));
+const PERIODS=["1d","5d","1M","3M","6M","1y","3y","5y","10y","YTD","max"];
+const INTERVALS=["1m","2m","5m","15m","30m","60m","90m","1d","1wk","1M"];
+let period="6M", interval="1d";
+let BARS=[], intraday=false;
+
+// indicators
+const closes=a=>a.map(b=>b.c);
+function sma(v,p){const o=Array(v.length).fill(null);let s=0;for(let i=0;i<v.length;i++){s+=v[i];if(i>=p)s-=v[i-p];if(i>=p-1)o[i]=s/p;}return o;}
+function ema(v,p){const o=Array(v.length).fill(null);const k=2/(p+1);let pr=null;for(let i=0;i<v.length;i++){pr=pr==null?v[i]:v[i]*k+pr*(1-k);if(i>=p-1)o[i]=pr;}return o;}
+function stdev(v,p){const o=Array(v.length).fill(null);for(let i=p-1;i<v.length;i++){const w=v.slice(i-p+1,i+1);const m=w.reduce((a,b)=>a+b,0)/p;o[i]=Math.sqrt(w.reduce((a,b)=>a+(b-m)**2,0)/p);}return o;}
+function rsi(v,p=14){const o=Array(v.length).fill(null);if(v.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=v[i]-v[i-1];g+=Math.max(d,0);l+=Math.max(-d,0);}g/=p;l/=p;o[p]=100-100/(1+(l===0?100:g/l));for(let i=p+1;i<v.length;i++){const d=v[i]-v[i-1];g=(g*(p-1)+Math.max(d,0))/p;l=(l*(p-1)+Math.max(-d,0))/p;o[i]=100-100/(1+(l===0?100:g/l));}return o;}
+function macd(v){const f=ema(v,12),s=ema(v,26);const line=v.map((_,i)=>(f[i]!=null&&s[i]!=null)?f[i]-s[i]:null);const sig=Array(line.length).fill(null);const idx=[],val=[];line.forEach((x,i)=>{if(x!=null){idx.push(i);val.push(x);}});const se=ema(val,9);idx.forEach((i,k)=>sig[i]=se[k]);const hist=line.map((x,i)=>(x!=null&&sig[i]!=null)?x-sig[i]:null);return{line,sig,hist};}
+function patterns(b){const o=[];const body=x=>Math.abs(x.c-x.o),rng=x=>x.h-x.l,up=x=>x.h-Math.max(x.c,x.o),dn=x=>Math.min(x.c,x.o)-x.l;
+  for(let i=1;i<b.length;i++){const p=b[i-1],c=b[i],r=rng(c)||1e-9;
+    if(p.c<p.o&&c.c>c.o&&c.c>=p.o&&c.o<=p.c)o.push([c.t,"Bullish Engulfing","bull"]);
+    else if(p.c>p.o&&c.c<c.o&&c.o>=p.c&&c.c<=p.o)o.push([c.t,"Bearish Engulfing","bear"]);
+    else if(body(c)/r<0.1)o.push([c.t,"Doji","neut"]);
+    else if(dn(c)>2*body(c)&&up(c)<body(c))o.push([c.t,"Hammer","bull"]);
+    else if(up(c)>2*body(c)&&dn(c)<body(c))o.push([c.t,"Shooting Star","bear"]);}
+  return o;}
+function levels(b,k=5){const R=[],S=[];for(let i=k;i<b.length-k;i++){const w=b.slice(i-k,i+k+1);if(b[i].h===Math.max(...w.map(x=>x.h)))R.push(b[i].h);if(b[i].l===Math.min(...w.map(x=>x.l)))S.push(b[i].l);}
+  const u=a=>{a.sort((x,y)=>y-x);const o=[];for(const v of a)if(!o.some(x=>Math.abs(x-v)/v<0.02))o.push(v);return o;};return{res:u(R).slice(0,3),sup:u(S).slice(0,3)};}
+
+const LWC=LightweightCharts,grid={color:"rgba(255,255,255,.05)"};
+const chart=LWC.createChart(document.getElementById("chart"),{layout:{background:{type:'solid',color:'transparent'},textColor:'#c9c9cf'},grid:{vertLines:grid,horzLines:grid},rightPriceScale:{borderColor:'rgba(255,255,255,.1)'},timeScale:{borderColor:'rgba(255,255,255,.1)',timeVisible:false,secondsVisible:false},crosshair:{mode:LWC.CrosshairMode.Normal}});
+const osc=LWC.createChart(document.getElementById("osc"),{layout:{background:{type:'solid',color:'transparent'},textColor:'#c9c9cf'},grid:{vertLines:grid,horzLines:grid},rightPriceScale:{borderColor:'rgba(255,255,255,.1)'},timeScale:{borderColor:'rgba(255,255,255,.1)'}});
+chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(r)osc.timeScale().setVisibleLogicalRange(r);});
+osc.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(r)chart.timeScale().setVisibleLogicalRange(r);});
+const candle=chart.addCandlestickSeries({upColor:'#4ade80',downColor:'#f87171',borderVisible:false,wickUpColor:'#4ade80',wickDownColor:'#f87171'});
+let overlays=[],oscSeries=[];
+const state={sma20:true,sma50:true,ema20:false,bb:false,rsi:true,macd:false,patterns:true,sr:true};
+const INDS=[["sma20","SMA 20"],["sma50","SMA 50"],["ema20","EMA 20"],["bb","Bollinger"],["rsi","RSI"],["macd","MACD"],["sr","S/R lines"]];
+let selectedPatterns=new Set();   // candlestick patterns shown at once (multi-select)
+
+// hover tooltip
+const tt=document.getElementById("tt");
+const volMap=new Map();
+chart.subscribeCrosshairMove(param=>{
+  if(!param.time||!param.point||param.point.x<0){tt.style.display="none";return;}
+  const d=param.seriesData.get(candle);if(!d){tt.style.display="none";return;}
+  const chg=((d.close-d.open)/d.open*100);
+  let tk=(typeof param.time==="number")?new Date(param.time*1000).toLocaleString():param.time;
+  const v=volMap.get(param.time);
+  tt.innerHTML=`<b>${tk}</b><br>O ${SYM}${d.open.toFixed(2)}  H ${SYM}${d.high.toFixed(2)}<br>L ${SYM}${d.low.toFixed(2)}  C ${SYM}${d.close.toFixed(2)}`
+    +`<br><span class="${chg>=0?'pos':'neg'}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>`+(v!=null?`  ·  Vol ${(v/1e6).toFixed(2)}M`:"");
+  const box=document.getElementById("chart").getBoundingClientRect();
+  let x=box.left+window.scrollX+param.point.x+16, y=box.top+window.scrollY+param.point.y-10;
+  if(param.point.x>box.width-170)x=box.left+window.scrollX+param.point.x-170;
+  tt.style.left=x+"px";tt.style.top=y+"px";tt.style.display="block";
+});
+
+function render(){
+  const bars=BARS;if(!bars.length)return;
+  chart.applyOptions({timeScale:{timeVisible:intraday,secondsVisible:false}});
+  candle.setData(bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));
+  volMap.clear();bars.forEach(b=>volMap.set(b.t,b.v));
+  overlays.forEach(s=>chart.removeSeries(s));overlays=[];
+  const cl=closes(bars);
+  const add=(arr,color,w=1.5)=>{const s=chart.addLineSeries({color,lineWidth:w,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});s.setData(bars.map((b,i)=>arr[i]==null?null:({time:b.t,value:arr[i]})).filter(Boolean));overlays.push(s);};
+  if(state.sma20)add(sma(cl,20),'#f0b90b');
+  if(state.sma50)add(sma(cl,50),'#1892f3');
+  if(state.ema20)add(ema(cl,20),'#9666e3');
+  if(state.bb){const m=sma(cl,20),sd=stdev(cl,20);add(m.map((v,i)=>v==null?null:v+2*sd[i]),'rgba(150,102,227,.5)',1);add(m.map((v,i)=>v==null?null:v-2*sd[i]),'rgba(150,102,227,.5)',1);}
+  applyPatterns();
+  (candle._sr||[]).forEach(pl=>candle.removePriceLine(pl));candle._sr=[];
+  if(state.sr){const {res,sup}=levels(bars);res.forEach(p=>candle._sr.push(candle.createPriceLine({price:p,color:'rgba(248,113,113,.6)',lineWidth:1,lineStyle:2,title:'R'})));sup.forEach(p=>candle._sr.push(candle.createPriceLine({price:p,color:'rgba(74,222,128,.6)',lineWidth:1,lineStyle:2,title:'S'})));}
+  oscSeries.forEach(s=>osc.removeSeries(s));oscSeries=[];
+  if(state.rsi){const r=rsi(cl);const s=osc.addLineSeries({color:'#9666e3',lineWidth:1.5});s.setData(bars.map((b,i)=>r[i]==null?null:({time:b.t,value:r[i]})).filter(Boolean));oscSeries.push(s);[30,70].forEach(lv=>s.createPriceLine({price:lv,color:'rgba(255,255,255,.2)',lineWidth:1,lineStyle:2,title:String(lv)}));}
+  if(state.macd){const m=macd(cl);const l=osc.addLineSeries({color:'#1892f3',lineWidth:1.5});l.setData(bars.map((b,i)=>m.line[i]==null?null:({time:b.t,value:m.line[i]})).filter(Boolean));oscSeries.push(l);const sg=osc.addLineSeries({color:'#f0b90b',lineWidth:1.2});sg.setData(bars.map((b,i)=>m.sig[i]==null?null:({time:b.t,value:m.sig[i]})).filter(Boolean));oscSeries.push(sg);const h=osc.addHistogramSeries({});h.setData(bars.map((b,i)=>m.hist[i]==null?null:({time:b.t,value:m.hist[i],color:m.hist[i]>=0?'rgba(74,222,128,.5)':'rgba(248,113,113,.5)'})).filter(Boolean));oscSeries.push(h);}
+  chart.timeScale().fitContent();osc.timeScale().fitContent();
+  kpis(bars);tables(bars);
+}
+function kpis(b){const last=b[b.length-1],first=b[0],cl=closes(b),r=rsi(cl),rv=r[r.length-1];
+  const ret=(last.c/first.c-1)*100,hi=Math.max(...b.map(x=>x.h)),lo=Math.min(...b.map(x=>x.l));
+  const K=(k,v,c="")=>`<div class="kpi"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+  document.getElementById("kpis").innerHTML=K("Last",money(last.c))+K("Period return",(ret>=0?"+":"")+ret.toFixed(2)+"%",ret>=0?"pos":"neg")+K("High",money(hi))+K("Low",money(lo))+K("RSI (14)",rv?rv.toFixed(1):"—",rv>70?"neg":rv<30?"pos":"");}
+function tables(b){
+  const {res,sup}=levels(b);let rows="";res.forEach((p,i)=>rows+=`<tr><td>R${i+1}</td><td><span class="badge bear">Resistance</span></td><td>${money(p)}</td></tr>`);sup.forEach((p,i)=>rows+=`<tr><td>S${i+1}</td><td><span class="badge bull">Support</span></td><td>${money(p)}</td></tr>`);
+  document.getElementById("sr").innerHTML=rows||`<tr><td colspan=3 class="muted">—</td></tr>`;}
+
+// ── candlestick patterns from the live /patterns API (73-pattern library) ──
+let apiPat=[];   // [{pattern,signal,count,dates:[],last}]
+const SIGCOL={bull:'#4ade80',bear:'#f87171',neut:'#cbb3ef'};
+let cxLines=[];
+function clearCxLines(){cxLines.forEach(s=>chart.removeSeries(s));cxLines=[];}
+
+const fmtWhen=t=>typeof t==='number'?new Date(t*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):t;
+// Single source of truth: renders the pattern table, selected tokens, and ALL
+// chart markers/lines (multiple candlestick patterns + multiple complex patterns).
+function applyPatterns(){
+  const pel=document.getElementById("pat");
+  pel.innerHTML=apiPat.length?apiPat.slice(0,20).map(p=>{
+    const on=selectedPatterns.has(p.pattern);
+    return `<tr data-p="${p.pattern.replace(/"/g,'')}" style="cursor:pointer;${on?'background:rgba(150,102,227,.14)':''}"><td class="muted">${fmtWhen(p.last)}</td><td>${p.pattern}${p.count>1?` <span class="muted">×${p.count}</span>`:""}</td><td><span class="badge ${p.signal}">${p.signal==='bull'?'Bullish':p.signal==='bear'?'Bearish':'Neutral'}</span></td></tr>`;
+  }).join(""):`<tr><td colspan=3 class="muted">${apiPat.__loading?'<span class="shimmer">Scanning…</span>':"No patterns detected."}</td></tr>`;
+  [...pel.querySelectorAll("tr[data-p]")].forEach(tr=>tr.onclick=()=>togglePattern(tr.getAttribute("data-p")));
+  buildTokens();
+  // combined markers/lines (works on daily AND intraday — API returns matching time keys)
+  clearCxLines();
+  let mk=[];
+  apiPat.filter(p=>selectedPatterns.has(p.pattern)).forEach(p=>{
+    (p.dates||[]).forEach(d=>mk.push({time:d,position:p.signal==='bear'?'aboveBar':'belowBar',color:SIGCOL[p.signal],shape:p.signal==='bear'?'arrowDown':'arrowUp',text:p.pattern.split(' ')[0]}));
+  });
+  [...selectedCxSet].forEach(i=>{const p=cxList[i];if(!p)return;const col=p.signal==='bull'?'#4ade80':'#f87171';
+    const drawLine=(pts,color,style,width)=>{if(!pts)return;const v=pts.filter(Boolean).map(q=>({time:q.date,value:q.price}));if(v.length<2)return;const s=chart.addLineSeries({color,lineWidth:width||2,lineStyle:style||0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});s.setData(v);cxLines.push(s);};
+    drawLine(p.shape,'#e0b34a',0,2);drawLine(p.neckline,col,2,1.6);drawLine(p.pole,'#e0b34a',0,2);drawLine(p.breakout,col,2,1.6);
+    [["start","Start"],[p.head?"head":"tip",p.head?"Head":"Tip"],["confirmed","Confirm"]].forEach(([k,lab])=>{const d=p[k];if(!d)return;mk.push({time:d,position:p.signal==='bear'?'aboveBar':'belowBar',color:col,shape:lab==='Confirm'?'circle':(p.signal==='bear'?'arrowDown':'arrowUp'),text:lab});});
+  });
+  const seen=new Set();mk=mk.sort((a,b)=>(a.time<b.time?1:-1)).filter(m=>{const k=m.time+m.text;if(seen.has(k))return false;seen.add(k);return true;}).slice(0,90).sort((a,b)=>a.time<b.time?-1:1);
+  candle.setMarkers(mk);
+}
+function togglePattern(n){selectedPatterns.has(n)?selectedPatterns.delete(n):selectedPatterns.add(n);applyPatterns();}
+function buildTokens(){
+  const box=document.getElementById("pattokens");if(!box)return;
+  const toks=[];
+  [...selectedPatterns].forEach(n=>toks.push({label:n,rm:()=>{selectedPatterns.delete(n);applyPatterns();}}));
+  [...selectedCxSet].forEach(i=>{const p=cxList[i];if(p)toks.push({label:p.type+" ⟋",rm:()=>{selectedCxSet.delete(i);renderComplex();applyPatterns();}});});
+  box.innerHTML="";
+  if(!toks.length){box.innerHTML=`<span class="muted" style="font-size:.75rem">No patterns overlaid — search above to add candlestick or chart patterns.</span>`;return;}
+  toks.forEach(t=>{const el=document.createElement("span");el.className="tok";el.appendChild(document.createTextNode(t.label+" "));const x=document.createElement("button");x.className="x";x.textContent="×";x.onclick=t.rm;el.appendChild(x);box.appendChild(el);});
+}
+function renderSuggestions(){
+  const q=document.getElementById("patsearch").value.trim().toLowerCase();
+  const box=document.getElementById("patsugg");
+  if(!q){box.style.display="none";return;}
+  const items=[];
+  apiPat.forEach(p=>{if(!selectedPatterns.has(p.pattern))items.push({name:p.pattern,tag:(p.signal==='bull'?'bullish':p.signal==='bear'?'bearish':'neutral')+" · ×"+p.count,add:()=>selectedPatterns.add(p.pattern)});});
+  cxList.forEach((p,i)=>{if(!selectedCxSet.has(i))items.push({name:p.type,tag:"chart pattern",add:()=>selectedCxSet.add(i)});});
+  const f=items.filter(it=>it.name.toLowerCase().includes(q)).slice(0,8);
+  if(!f.length){box.innerHTML=`<div class="muted" style="cursor:default">No match</div>`;box.style.display="block";return;}
+  box.innerHTML=f.map((it,k)=>`<div data-k="${k}"><span>${it.name}</span><span class="tag">${it.tag}</span></div>`).join("");
+  [...box.querySelectorAll("div[data-k]")].forEach(d=>d.onclick=()=>{f[+d.dataset.k].add();document.getElementById("patsearch").value="";box.style.display="none";renderComplex();applyPatterns();});
+  box.style.display="block";
+}
+function fillPatternSelect(){const valid=new Set(apiPat.map(p=>p.pattern));[...selectedPatterns].forEach(n=>{if(!valid.has(n))selectedPatterns.delete(n);});}
+async function fetchPatterns(tk){
+  apiPat=[];apiPat.__loading=true;applyPatterns();
+  try{
+    const r=await fetch(`${API}/patterns?ticker=${encodeURIComponent(tk)}&period=${period}&interval=${interval}`);
+    if(!r.ok)throw 0;const j=await r.json();apiPat=j.detected||[];
+  }catch(e){apiPat=[];}
+  apiPat.__loading=false;fillPatternSelect();applyPatterns();
+}
+
+let _req=0;
+async function load(){
+  const tk=document.getElementById("tk").value.trim();if(!tk)return;
+  const my=++_req;
+  const st=document.getElementById("status");st.innerHTML='<span class="shimmer">Loading…</span>';
+  document.getElementById("go").disabled=true;
+  try{
+    const r=await fetch(`${API}/ohlc?ticker=${encodeURIComponent(tk)}&period=${period}&interval=${interval}`);
+    if(my!==_req)return;                         // a newer request superseded this one
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||("HTTP "+r.status));}
+    const j=await r.json();if(my!==_req)return;
+    BARS=j.bars;intraday=j.intraday;CUR=j.currency||"USD";SYM=symOf(CUR);
+    document.getElementById("chtitle").textContent=(j.name?j.name+" · ":"")+j.resolved+"  ("+period+" / "+interval+")";
+    st.textContent=`${BARS.length} bars`;st.style.color="#4ade80";
+    render();
+    fetchPatterns(tk);                           // full 73-pattern library from the API
+    fetchComplex(tk);                            // H&S / flags / pennants
+  }catch(e){if(my===_req){st.textContent=String(e.message||e);st.style.color="#f87171";}}
+  if(my===_req)document.getElementById("go").disabled=false;
+}
+// ── segmented control with sliding highlight (period / interval) ──
+function segHi(h,b){const hl=h.querySelector(".seg-hl");hl.style.left="0";hl.style.width=b.offsetWidth+"px";hl.style.transform=`translateX(${b.offsetLeft}px)`;}
+function seg(host,items,cur,onpick){
+  const h=document.getElementById(host);h.querySelectorAll("button").forEach(b=>b.remove());
+  items.forEach(it=>{const b=document.createElement("button");b.textContent=it;b.dataset.v=it;if(it===cur)b.classList.add("on");
+    b.onclick=()=>{h.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));segHi(h,b);onpick(it);};h.appendChild(b);});
+  requestAnimationFrame(()=>{const on=h.querySelector("button.on");if(on)segHi(h,on);});
+}
+seg("per",PERIODS,period,v=>{period=v;load();});
+seg("ivl",INTERVALS,interval,v=>{interval=v;load();});
+const ib=document.getElementById("ind");INDS.forEach(([k,l])=>{const c=document.createElement("div");c.className="chip sm"+(state[k]?" on":"");c.textContent=l;c.onclick=()=>{state[k]=!state[k];c.classList.toggle("on");render();};ib.appendChild(c);});
+document.getElementById("go").onclick=load;
+document.getElementById("tk").addEventListener("keydown",e=>{if(e.key==="Enter")load();});
+// pattern search box
+const psearch=document.getElementById("patsearch");
+psearch.addEventListener("input",renderSuggestions);
+psearch.addEventListener("focus",renderSuggestions);
+document.addEventListener("click",e=>{if(!e.target.closest("#patsearch,#patsugg"))document.getElementById("patsugg").style.display="none";});
+document.getElementById("patclear").onclick=()=>{selectedPatterns.clear();selectedCxSet.clear();document.getElementById("patsearch").value="";renderComplex();applyPatterns();};
+// ── mode switcher: animated hover cards (Chart / Backtest / Screener) ──
+let MODE="chart";
+function modeHi(card){const hl=document.getElementById("mode-hl");hl.style.opacity="1";hl.style.left="0";hl.style.width=card.offsetWidth+"px";hl.style.transform=`translateX(${card.offsetLeft}px)`;}
+function setMode(m){
+  MODE=m;
+  document.getElementById("card-controls").style.display=(m==="screener")?"none":"block";
+  document.getElementById("mode-chart").style.display=(m==="chart")?"block":"none";
+  document.getElementById("mode-backtest").style.display=(m==="backtest")?"block":"none";
+  document.getElementById("mode-screener").style.display=(m==="screener")?"block":"none";
+  [...document.querySelectorAll(".modecard")].forEach(c=>c.classList.toggle("on",c.dataset.m===m));
+  const active=document.querySelector(`.modecard[data-m="${m}"]`);if(active)modeHi(active);
+  setTimeout(()=>{
+    if(m==="chart"){chart.applyOptions({width:document.getElementById("chart").clientWidth});osc.applyOptions({width:document.getElementById("osc").clientWidth});chart.timeScale().fitContent();osc.timeScale().fitContent();}
+    if(m==="backtest"&&eqChart){eqChart.applyOptions({width:document.getElementById("bt-eq").clientWidth});eqChart.timeScale().fitContent();}
+  },60);
+}
+[...document.querySelectorAll(".modecard")].forEach(c=>{c.onclick=()=>setMode(c.dataset.m);c.onmouseenter=()=>modeHi(c);});
+document.getElementById("modes").addEventListener("mouseleave",()=>{const a=document.querySelector(".modecard.on");if(a)modeHi(a);});
+window.addEventListener("resize",()=>{chart.applyOptions({width:document.getElementById("chart").clientWidth});osc.applyOptions({width:document.getElementById("osc").clientWidth});const a=document.querySelector(".modecard.on");if(a)modeHi(a);[["per",period],["ivl",interval]].forEach(([h,c])=>{const on=document.querySelector("#"+h+" button.on");if(on)segHi(document.getElementById(h),on);});});
+// ============ Complex chart patterns (H&S, flags, pennants) ============
+let cxList=[], selectedCxSet=new Set(), cxLoading=false;
+function toggleComplex(i){selectedCxSet.has(i)?selectedCxSet.delete(i):selectedCxSet.add(i);renderComplex();applyPatterns();}
+async function fetchComplex(tk){
+  cxList=[];selectedCxSet.clear();cxLoading=true;renderComplex();
+  try{const r=await fetch(`${API}/patterns/complex?ticker=${encodeURIComponent(tk)}&period=${period}&interval=${interval}&order=6`);
+    if(r.ok){const j=await r.json();cxList=j.detected||[];}}catch(e){cxList=[];}
+  cxLoading=false;renderComplex();applyPatterns();
+}
+function renderComplex(){
+  const el=document.getElementById("cx");
+  el.innerHTML=cxList.length?cxList.map((p,i)=>`<tr data-i="${i}" style="cursor:pointer;${selectedCxSet.has(i)?'background:rgba(150,102,227,.14)':''}"><td>${p.type}</td><td><span class="badge ${p.signal}">${p.signal==='bull'?'Bullish':'Bearish'}</span></td><td class="muted">${fmtWhen(p.start)||'—'}</td><td class="muted">${fmtWhen(p.head||p.tip)||'—'}</td><td class="muted">${fmtWhen(p.confirmed)||'—'}</td><td>${p.r2!=null?p.r2:'—'}</td></tr>`).join(""):`<tr><td colspan=6 class="muted">${cxLoading?'<span class="shimmer">Scanning…</span>':'No H&amp;S / flag / pennant patterns in this window.'}</td></tr>`;
+  [...el.querySelectorAll("tr[data-i]")].forEach(tr=>tr.onclick=()=>toggleComplex(+tr.getAttribute("data-i")));
+}
+// ============ Backtest ============
+const COMMON_PATTERNS=["Bullish Engulfing","Bearish Engulfing","Hammer","Shooting Star","Morning Star","Evening Star","Three White Soldiers","Three Black Crows","Bullish Harami","Bearish Harami","Piercing Pattern","Dark Cloud Cover","Dragonfly Doji","Gravestone Doji","Doji","Inverted Hammer","Hanging Man"];
+let eqChart=null,eqS1=null,eqS2=null;
+function fillSel(id,items,def){const s=document.getElementById(id);s.innerHTML=items.map(x=>`<option${x===def?' selected':''}>${x}</option>`).join("");}
+fillSel("bt-entry",COMMON_PATTERNS,"Bullish Engulfing");
+fillSel("bt-exit",COMMON_PATTERNS,"Bearish Engulfing");
+document.getElementById("bt-run").onclick=async()=>{
+  const st=document.getElementById("bt-status");st.innerHTML='<span class="shimmer">Running…</span>';
+  const body={ticker:document.getElementById("tk").value.trim(),period:(period==="1d"||period==="5d"||period==="1M"||period==="3M")?"1y":period,interval:"1d",entry_pattern:document.getElementById("bt-entry").value,exit_pattern:document.getElementById("bt-exit").value,initial_capital:parseFloat(document.getElementById("bt-cap").value)||100000,position_pct:parseFloat(document.getElementById("bt-pos").value)||100};
+  try{
+    const r=await fetch(`${API}/backtest`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||("HTTP "+r.status));}
+    const j=await r.json();const s=j.stats;
+    st.textContent=`${s.closed_trades} trades`;st.style.color="#4ade80";
+    const K=(k,v,c="")=>`<div class="kpi"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+    document.getElementById("bt-kpis").innerHTML=
+      K("Strategy return",(s.total_return_pct>=0?"+":"")+s.total_return_pct+"%",s.total_return_pct>=0?"pos":"neg")+
+      K("Buy &amp; hold",(s.buy_hold_pct>=0?"+":"")+s.buy_hold_pct+"%",s.buy_hold_pct>=0?"pos":"neg")+
+      K("Win rate",s.win_rate+"%")+K("Trades",s.closed_trades)+K("Avg trade",(s.avg_trade_pct>=0?"+":"")+s.avg_trade_pct+"%",s.avg_trade_pct>=0?"pos":"neg");
+    // equity chart
+    document.getElementById("bt-eqwrap").style.display="block";
+    if(!eqChart){eqChart=LWC.createChart(document.getElementById("bt-eq"),{layout:{background:{type:'solid',color:'transparent'},textColor:'#c9c9cf'},grid:{vertLines:grid,horzLines:grid},rightPriceScale:{borderColor:'rgba(255,255,255,.1)'},timeScale:{borderColor:'rgba(255,255,255,.1)'}});eqS1=eqChart.addAreaSeries({lineColor:'#9666e3',topColor:'rgba(150,102,227,.3)',bottomColor:'rgba(150,102,227,0)',lineWidth:2});eqS2=eqChart.addLineSeries({color:'rgba(255,255,255,.35)',lineWidth:1,lineStyle:2});}
+    eqS1.setData(j.equity.map(e=>({time:e.date,value:e.value})));
+    const c0=j.equity[0].value, base=body.initial_capital; // buy&hold overlay from stats
+    const first=j.equity[0].value; const bh=first*(1+s.buy_hold_pct/100);
+    eqS2.setData([{time:j.equity[0].date,value:first},{time:j.equity[j.equity.length-1].date,value:bh}]);
+    eqChart.timeScale().fitContent();
+    // trades
+    document.getElementById("bt-tradeswrap").style.display=j.trades.length?"block":"none";
+    document.getElementById("bt-trades").innerHTML=j.trades.slice().reverse().map(t=>`<tr><td class="muted">${t.entry_date}</td><td>${SYM}${t.entry_price}</td><td class="muted">${t.exit_date||'—'}</td><td>${t.exit_price?SYM+t.exit_price:'—'}</td><td class="${t.pnl_pct==null?'':t.pnl_pct>=0?'pos':'neg'}">${t.pnl_pct==null?'open':(t.pnl_pct>=0?'+':'')+t.pnl_pct+'%'}</td></tr>`).join("");
+  }catch(e){st.textContent=String(e.message||e);st.style.color="#f87171";}
+};
+
+// ============ Sector screener ============
+const SECTORS=["nifty50","auto","bank","privatebank","finance","it","pharma","healthcare","fmcg","metal","realty","media","oilgas","chemicals","consumerdurables"];
+fillSel("sc-sector",SECTORS,"nifty50");fillSel("sc-pat",COMMON_PATTERNS,"Bullish Engulfing");
+document.getElementById("sc-run").onclick=async()=>{
+  const st=document.getElementById("sc-status");st.innerHTML='<span class="shimmer">Scanning…</span>';
+  document.getElementById("sc-res").innerHTML=`<tr><td colspan=4 class="muted"><span class="shimmer">Scanning…</span></td></tr>`;
+  const sec=document.getElementById("sc-sector").value,pat=document.getElementById("sc-pat").value,lb=document.getElementById("sc-lb").value,scp=document.getElementById("sc-period").value;
+  try{
+    const r=await fetch(`${API}/screen?sector=${sec}&pattern=${encodeURIComponent(pat)}&period=${scp}&interval=1d&lookback=${lb}&limit=50`);
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||("HTTP "+r.status));}
+    const j=await r.json();
+    st.textContent=`${j.matched} of ${j.scanned} scanned`;st.style.color="#4ade80";
+    document.getElementById("sc-res").innerHTML=j.results.length?j.results.map(x=>`<tr><td>${x.ticker}</td><td class="muted">${x.name}</td><td class="muted">${x.date}</td><td>${x.last_close!=null?'₹'+x.last_close.toFixed(2):'—'}</td></tr>`).join(""):`<tr><td colspan=4 class="muted">No matches for ${pat} in ${sec}.</td></tr>`;
+  }catch(e){st.textContent=String(e.message||e);st.style.color="#f87171";document.getElementById("sc-res").innerHTML=`<tr><td colspan=4 class="muted">—</td></tr>`;}
+};
+
+setMode('chart');
+load();
+</script><script>
+(function(){
+  var nav=document.getElementById('swerve-nav');
+  window.addEventListener('scroll',function(){nav.classList.toggle('scrolled',window.scrollY>30);});
+  var mt=document.getElementById('ta-menu'),mob=document.getElementById('ta-mobile');
+  if(mt)mt.addEventListener('click',function(){mob.classList.toggle('open');});
+  try{
+    var sb=window.supabase.createClient("https://eabrlfuaptqbgdwjobav.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhYnJsZnVhcHRxYmdkd2pvYmF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzOTQxMTUsImV4cCI6MjA4Njk3MDExNX0.JOs2xu6wP77TKPRcPySTKyQp0V7ryiQF1ki58xlSueI");
+    var setL=function(u){var t=u?"Profile":"Log in";['ta-login','ta-login-m'].forEach(function(id){var e=document.getElementById(id);if(e)e.textContent=t;});};
+    sb.auth.getSession().then(function(r){setL(r.data.session?r.data.session.user:null);});
+    sb.auth.onAuthStateChange(function(_e,ss){setL(ss?ss.user:null);});
+  }catch(e){}
+})();
+</script>
+</body></html>

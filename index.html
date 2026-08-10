@@ -386,6 +386,11 @@ button:active{transform:scale(.97)}
 </style>
 </head>
 <body>
+<script>
+/* SPA deep-link restore: 404.html stored the requested clean path in
+   sessionStorage and bounced here to "/". Put the real URL back before boot. */
+(function(){var r=sessionStorage.getItem("spa_redirect");if(r){sessionStorage.removeItem("spa_redirect");if(r!==location.pathname+location.search+location.hash){history.replaceState(null,"",r);}}})();
+</script>
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useMemo,useCallback} = React;
@@ -576,9 +581,8 @@ function Nav({page,go}){
     const{data:s}=sb.auth.onAuthStateChange((_e,sess)=>setUser(sess?sess.user:null));
     return()=>s.subscription.unsubscribe();
   },[]);
-  const EXT={calendar:"calendar.html",graph:"graph.html",ta:"technical_analysis.html"};
-  const nav=p=>{if(EXT[p]){window.location.href=EXT[p];return;}go(p);setOpen(false);window.scrollTo(0,0)};
-  const links=[["Home","home"],["Research","research"],/* ["Insights","blog"], -- paused, not updating for now */["Calendar","calendar"],["Dashboard","portfolio"],["Technical Analysis","ta"],["Graph","graph"],["Wallet","wallet"],["Profile","profile"],["Contact","contact"]];
+  const nav=p=>{if(FILE_PAGES[p]){window.location.href=ROUTES[p];return;}go(p);setOpen(false);window.scrollTo(0,0)};
+  const links=[["Home","home"],["Research","research"],/* ["Insights","blog"], -- paused, not updating for now */["Calendar","calendar"],["Dashboard","portfolio"],["Technical Analysis","ta"],/* ["Graph","graph"], -- graph paused, coming soon */["Wallet","wallet"],["Profile","profile"],["Contact","contact"]];
   return(
     <>
     <header
@@ -3335,24 +3339,29 @@ function Profile(){
   );
 }
 
-const SPA_PAGES=["home","research","wallet","profile","contact","portfolio"];
+/* ── Canonical clean-URL routing (site served at domain root) ──
+   page key -> pretty path. FILE_PAGES are real .html files (served by
+   GitHub Pages extension fallback); the rest are in-app SPA views.     */
+const ROUTES={home:"/",research:"/research",calendar:"/calendar",portfolio:"/dashboard",ta:"/technical-analysis",graph:"/graph",wallet:"/wallet",profile:"/profile",contact:"/contact"};
+const FILE_PAGES={calendar:1,ta:1,graph:1};
+const PATH2PAGE=(()=>{const m={"":"home"};Object.keys(ROUTES).forEach(k=>{if(!FILE_PAGES[k])m[ROUTES[k]]=k;});return m;})();
 function initPage(){
-  const h=(window.location.hash||"").replace(/^#\/?/,"");
-  if(h==="blog")return "blog";
-  if(h==="calendar"){window.location.replace("calendar.html");return "home";}
-  if(h==="graph"){window.location.replace("graph.html");return "home";}
-  if(h==="ta"){window.location.replace("technical_analysis.html");return "home";}
-  return SPA_PAGES.includes(h)?h:"home";
+  const p=(window.location.pathname||"/").replace(/\/+$/,"")||"/";
+  return PATH2PAGE[p]||"home";
 }
 function App(){
   const[page,setPage]=useState(initPage);
+  useEffect(()=>{
+    const onPop=()=>setPage(initPage());
+    window.addEventListener("popstate",onPop);
+    return()=>window.removeEventListener("popstate",onPop);
+  },[]);
   const go=useCallback(p=>{
-    if(p==="blog"){window.location.hash="#/blog";}
-    else if(SPA_PAGES.includes(p)){window.location.hash="#"+p;}
-    else if((window.location.hash||"").startsWith("#/blog")){
-      history.replaceState(null,"",window.location.pathname+window.location.search);
-    }
+    const path=ROUTES[p]||"/";
+    if(FILE_PAGES[p]){window.location.href=path;return;}
+    history.pushState({},"",path);
     setPage(p);
+    window.scrollTo(0,0);
   },[]);
   return(
     <>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Swerve</title>
+<script>
+/* GitHub Pages fallback. Two cases:
+   1. A clean path for a real tool file (e.g. /calendar) — if the host
+      didn't resolve it to the .html, send it there directly.
+   2. A clean SPA path (e.g. /wallet) — remember it, bounce to the app
+      root, which restores it via history.replaceState before boot. */
+(function(){
+  var FILES={"/calendar":"/calendar.html","/graph":"/graph.html","/technical-analysis":"/technical-analysis.html"};
+  var p=location.pathname.replace(/\/+$/,"");
+  if(FILES[p]){location.replace(FILES[p]+location.search+location.hash);return;}
+  sessionStorage.setItem("spa_redirect", location.pathname + location.search + location.hash);
+  location.replace("/");
+})();
+</script>
+</head>
+<body></body>
+</html>
