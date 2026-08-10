@@ -3213,6 +3213,82 @@ function Wallet(){
 // no per-query breakdown is shown anywhere -- just the monthly total.
 const CREDIT_VALUE_INR=0.10;
 
+/* ── Exit survey shown before cancelling a plan or deleting an account ── */
+const CANCEL_REASONS=["Too expensive","Not using it enough","Missing features I need","Found a better alternative","Just taking a break","Other"];
+const DELETE_REASONS=["Not using it enough","Missing features I need","Privacy concerns","Found a better alternative","Created another account","Other"];
+function ExitSurvey({mode,user,sub,onClose,onDone}){
+  const isDel=mode==="delete";
+  const reasons=isDel?DELETE_REASONS:CANCEL_REASONS;
+  const[reason,setReason]=useState("");
+  const[comment,setComment]=useState("");
+  const[confirmTxt,setConfirmTxt]=useState("");
+  const[busy,setBusy]=useState(false);
+  const[err,setErr]=useState("");
+  async function submit(){
+    setErr("");
+    if(!reason){setErr("Please pick a reason.");return;}
+    if(isDel&&confirmTxt.trim().toUpperCase()!=="DELETE"){setErr('Type DELETE to confirm.');return;}
+    setBusy(true);
+    try{
+      // 1) record why they're leaving (survives account deletion via ON DELETE SET NULL)
+      await sb.from("cancellation_feedback").insert({
+        user_id:user.id,kind:isDel?"account_delete":"subscription_cancel",
+        reason,comment:comment.trim()||null,plan_id:sub?sub.plan_id:null});
+      // 2) perform the action server-side (needs a valid session token)
+      const{data:sess}=await sb.auth.getSession();
+      const token=sess&&sess.session?sess.session.access_token:null;
+      const ep=isDel?"/account/delete":"/subscribe/cancel";
+      const r=await fetch(API+ep,{method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},token?{Authorization:"Bearer "+token}:{}),
+        body:JSON.stringify({user_id:user.id})});
+      if(!r.ok){let d={};try{d=await r.json();}catch(e){}throw new Error(d.detail||("Request failed ("+r.status+")"));}
+      if(isDel){await sb.auth.signOut();}
+      onDone(mode);
+    }catch(e){setErr(e.message||"Something went wrong. Please try again or contact support.");}
+    finally{setBusy(false);}
+  }
+  return(
+    <Overlay onClose={busy?()=>{}:onClose}>
+      <div style={{fontSize:"1.05rem",fontWeight:700,color:"#fff",marginBottom:6}}>
+        {isDel?"Delete your account":"Cancel subscription"}
+      </div>
+      <div style={{fontSize:".85rem",color:"rgba(255,255,255,.55)",marginBottom:18,lineHeight:1.6}}>
+        {isDel
+          ?"This permanently removes your account and data — it can't be undone. Before you go, could you tell us why?"
+          :"Your plan stays active until the end of the current billing period. Mind sharing why you're cancelling?"}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+        {reasons.map(r=>(
+          <button key={r} onClick={()=>setReason(r)} style={{textAlign:"left",padding:"10px 14px",borderRadius:10,cursor:"pointer",
+            fontSize:".85rem",fontWeight:500,transition:".15s",
+            border:"1px solid "+(reason===r?"rgba(150,102,227,.6)":"rgba(255,255,255,.1)"),
+            background:reason===r?"rgba(150,102,227,.15)":"rgba(255,255,255,.03)",
+            color:reason===r?"#fff":"rgba(255,255,255,.7)"}}>{r}</button>
+        ))}
+      </div>
+      <textarea className="inp" placeholder="Anything else you'd like us to know? (optional)"
+        value={comment} onChange={e=>setComment(e.target.value)}
+        style={{width:"100%",minHeight:70,marginBottom:14,resize:"vertical"}}/>
+      {isDel&&(
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",marginBottom:6}}>Type <b style={{color:"#fff"}}>DELETE</b> to confirm.</div>
+          <input className="inp" style={{width:"100%"}} value={confirmTxt} onChange={e=>setConfirmTxt(e.target.value)} placeholder="DELETE"/>
+        </div>
+      )}
+      {err&&<div style={{color:"#ef4444",fontSize:".8rem",marginBottom:12}}>{err}</div>}
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <button onClick={onClose} disabled={busy} style={{background:"none",border:"1px solid rgba(255,255,255,.14)",
+          borderRadius:10,padding:"9px 18px",color:"rgba(255,255,255,.7)",cursor:busy?"default":"pointer",fontSize:".84rem"}}>Never mind</button>
+        <button onClick={submit} disabled={busy} style={{border:"none",borderRadius:10,padding:"9px 20px",
+          cursor:busy?"default":"pointer",fontSize:".84rem",fontWeight:600,color:"#fff",opacity:busy?.6:1,
+          background:isDel?"#ef4444":"linear-gradient(135deg,#9666e3,#1892f3)"}}>
+          {busy?"Please wait…":(isDel?"Delete account":"Cancel subscription")}
+        </button>
+      </div>
+    </Overlay>
+  );
+}
+
 function Profile(){
   const[user,setUser]=useState(null);
   const[authOpen,setAuthOpen]=useState(false);
@@ -3222,6 +3298,15 @@ function Profile(){
   const[phone,setPhone]=useState("");
   const[editingPhone,setEditingPhone]=useState(false);
   const[savingPhone,setSavingPhone]=useState(false);
+  // security + account management
+  const[showPw,setShowPw]=useState(false);
+  const[curPw,setCurPw]=useState("");
+  const[newPw,setNewPw]=useState("");
+  const[confPw,setConfPw]=useState("");
+  const[pwBusy,setPwBusy]=useState(false);
+  const[pwMsg,setPwMsg]=useState(null);
+  const[survey,setSurvey]=useState(null); // "cancel" | "delete" | null
+  const[flash,setFlash]=useState(null);
 
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
@@ -3259,6 +3344,27 @@ function Profile(){
     const{error}=await sb.auth.updateUser({data:{phone}});
     setSavingPhone(false);
     if(!error)setEditingPhone(false);
+  }
+
+  async function changePassword(){
+    setPwMsg(null);
+    if(newPw.length<8){setPwMsg({t:"err",m:"New password must be at least 8 characters."});return;}
+    if(newPw!==confPw){setPwMsg({t:"err",m:"New passwords don't match."});return;}
+    setPwBusy(true);
+    // verify the current password by re-authenticating first
+    const{error:signErr}=await sb.auth.signInWithPassword({email:user.email,password:curPw});
+    if(signErr){setPwBusy(false);setPwMsg({t:"err",m:"Current password is incorrect."});return;}
+    const{error}=await sb.auth.updateUser({password:newPw});
+    setPwBusy(false);
+    if(error){setPwMsg({t:"err",m:error.message});return;}
+    setPwMsg({t:"ok",m:"Password updated."});
+    setCurPw("");setNewPw("");setConfPw("");setShowPw(false);
+  }
+
+  function onSurveyDone(m){
+    setSurvey(null);
+    if(m==="delete"){setUser(null);setFlash("Your account has been deleted. We're sorry to see you go.");}
+    else{setSub(s=>s?{...s,status:"cancelled"}:s);setFlash("Your subscription has been cancelled. It stays active until the end of the current period.");}
   }
 
   const inrUsedThisMonth=(monthDebitTotal===null?0:monthDebitTotal*CREDIT_VALUE_INR).toFixed(2);
@@ -3330,10 +3436,54 @@ function Profile(){
                 <div style={{fontSize:"1.9rem",fontWeight:700,marginTop:6,color:"#fff"}}>₹{inrUsedThisMonth}</div>
               </div>
             </div>
+
+            {flash&&(
+              <div className="card" style={{padding:"1rem 1.25rem",marginTop:20,border:"1px solid rgba(150,102,227,.45)",color:"#fff",fontSize:".86rem"}}>{flash}</div>
+            )}
+
+            {/* Password / security */}
+            <div className="card" style={{padding:"1.75rem",marginTop:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showPw?18:0,gap:12}}>
+                <div>
+                  <div style={{fontSize:".95rem",fontWeight:600,color:"#fff"}}>Password</div>
+                  <div style={{fontSize:".8rem",color:"rgba(255,255,255,.45)",marginTop:2}}>Change the password you use to sign in.</div>
+                </div>
+                <button onClick={()=>{setShowPw(v=>!v);setPwMsg(null);}} style={{background:"none",border:"1px solid rgba(255,255,255,.14)",
+                  borderRadius:10,padding:"6px 14px",color:"rgba(255,255,255,.65)",cursor:"pointer",fontSize:".78rem",fontWeight:500,whiteSpace:"nowrap"}}>
+                  {showPw?"Close":"Change password"}
+                </button>
+              </div>
+              {showPw&&(
+                <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:360}}>
+                  <input className="inp" type="password" placeholder="Current password" value={curPw} onChange={e=>setCurPw(e.target.value)} autoComplete="current-password"/>
+                  <input className="inp" type="password" placeholder="New password (min 8 characters)" value={newPw} onChange={e=>setNewPw(e.target.value)} autoComplete="new-password"/>
+                  <input className="inp" type="password" placeholder="Confirm new password" value={confPw} onChange={e=>setConfPw(e.target.value)} autoComplete="new-password"/>
+                  {pwMsg&&<div style={{fontSize:".8rem",color:pwMsg.t==="ok"?"#22c55e":"#ef4444"}}>{pwMsg.m}</div>}
+                  <GlowBtn style={{padding:"10px 20px",fontSize:".84rem",alignSelf:"flex-start"}} onClick={changePassword} disabled={pwBusy}>
+                    {pwBusy?"Updating…":"Update password"}
+                  </GlowBtn>
+                </div>
+              )}
+            </div>
+
+            {/* Manage account */}
+            <div className="card" style={{padding:"1.75rem",marginTop:20,border:"1px solid rgba(239,68,68,.25)"}}>
+              <div style={{fontSize:".95rem",fontWeight:600,color:"#fff",marginBottom:4}}>Manage account</div>
+              <div style={{fontSize:".8rem",color:"rgba(255,255,255,.45)",marginBottom:16}}>Cancel your plan or permanently delete your account.</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                {sub&&sub.status&&sub.status!=="cancelled"&&(
+                  <button onClick={()=>setSurvey("cancel")} style={{background:"none",border:"1px solid rgba(255,255,255,.16)",
+                    borderRadius:10,padding:"10px 18px",color:"rgba(255,255,255,.8)",cursor:"pointer",fontSize:".84rem",fontWeight:500}}>Cancel subscription</button>
+                )}
+                <button onClick={()=>setSurvey("delete")} style={{background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.4)",
+                  borderRadius:10,padding:"10px 18px",color:"#f87171",cursor:"pointer",fontSize:".84rem",fontWeight:600}}>Delete account</button>
+              </div>
+            </div>
           </>
         )}
       </div>
 
+      {survey&&<ExitSurvey mode={survey} user={user} sub={sub} onClose={()=>setSurvey(null)} onDone={onSurveyDone}/>}
       {authOpen&&<AuthModal onClose={()=>setAuthOpen(false)}/>}
     </div>
   );
