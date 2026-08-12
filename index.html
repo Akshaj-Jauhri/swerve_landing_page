@@ -1170,7 +1170,7 @@ function Foot({go}){
           </div>
           {[
             {t:"Platform",ls:[["Research Hub","research"],/* ["Insights","blog"], -- paused */["Contact","contact"]]},
-            {t:"Legal",ls:[["Privacy Policy","#"],["Terms of Use","#"],["Disclaimer","#"]]},
+            {t:"Legal",ls:[["Privacy Policy","privacy"],["Terms of Use","terms"],["Disclaimer","disclaimer"]]},
           ].map(({t,ls})=>(
             <div key={t}>
               <p style={{fontSize:".62rem",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",
@@ -2885,6 +2885,8 @@ function Results({res,cfg,model,lastReq}){
           <MetRow label="Sharpe" v={m["Sharpe"]!=null?m["Sharpe"].toFixed(2):"—"}/>
         </div>
       </div>
+
+      <Analytics res={res} model={model} sym={sym}/>
       </div>
     </div>
   );
@@ -2942,6 +2944,165 @@ function EmailSignup({lastReq}){
   );
 }
 
+/* ── Portfolio analytics, computed client-side from the returned NAV series.
+   Mirrors the Streamlit dashboard's ratios (rf = 5% annual, 252 trading days). ── */
+const RF_RATE=0.05;
+function _std(arr){
+  const n=arr.length; if(n<2)return 0;
+  const m=arr.reduce((a,b)=>a+b,0)/n;
+  return Math.sqrt(arr.reduce((a,b)=>a+(b-m)*(b-m),0)/(n-1));
+}
+function _quantile(sorted,q){
+  if(!sorted.length)return 0;
+  const pos=(sorted.length-1)*q, base=Math.floor(pos), rest=pos-base;
+  return sorted[base+1]!=null?sorted[base]+rest*(sorted[base+1]-sorted[base]):sorted[base];
+}
+function computeAnalytics(res){
+  const vals=(res.nav||[]).map(p=>p.value).filter(v=>v!=null&&v>0);
+  const out={n:vals.length};
+  if(vals.length<3)return out;
+  const rets=[]; for(let i=1;i<vals.length;i++)rets.push(vals[i]/vals[i-1]-1);
+  const mean=rets.reduce((a,b)=>a+b,0)/rets.length;
+  const annRet=mean*252, annVol=_std(rets)*Math.sqrt(252);
+  out.annReturn=annRet; out.volatility=annVol;
+  out.sharpe=annVol>0?(annRet-RF_RATE)/annVol:0;
+  const downside=rets.filter(r=>r<0);
+  const dDev=_std(downside)*Math.sqrt(252);
+  out.sortino=downside.length?(dDev>0?(annRet-RF_RATE)/dDev:0):(annRet>RF_RATE?Infinity:0);
+  let cum=1,peak=1,maxDD=0;
+  for(const r of rets){cum*=(1+r);if(cum>peak)peak=cum;const dd=(cum-peak)/peak;if(dd<maxDD)maxDD=dd;}
+  out.maxDD=maxDD;
+  out.calmar=maxDD<0?annRet/Math.abs(maxDD):0;
+  const sorted=[...rets].sort((a,b)=>a-b);
+  out.var95=_quantile(sorted,0.05);
+  const tail=rets.filter(r=>r<=out.var95);
+  out.cvar95=tail.length?tail.reduce((a,b)=>a+b,0)/tail.length:out.var95;
+  out.winRate=rets.filter(r=>r>0).length/rets.length;
+  return out;
+}
+function concentration(holdings){
+  let ws=holdings.map(h=>h.weight_now!=null?h.weight_now/100:null).filter(x=>x!=null);
+  if(!ws.length){const tot=holdings.reduce((s,h)=>s+(h.value||0),0);ws=tot>0?holdings.map(h=>(h.value||0)/tot):[];}
+  const hhi=ws.reduce((s,w)=>s+w*w,0), sorted=[...ws].sort((x,y)=>y-x);
+  const sum=a=>a.reduce((s,w)=>s+w,0);
+  return {hhi,eff:hhi>0?1/hhi:0,top5:sum(sorted.slice(0,5)),top10:sum(sorted.slice(0,10)),count:holdings.length};
+}
+function aggregateBy(holdings,cls,key){
+  if(!cls)return [];
+  const agg={};
+  holdings.forEach(h=>{
+    const w=h.weight_now!=null?h.weight_now/100:(h.value||0);
+    const g=(cls[h.ticker]&&cls[h.ticker][key])||"Unknown";
+    agg[g]=(agg[g]||0)+w;
+  });
+  const total=Object.values(agg).reduce((a,b)=>a+b,0)||1;
+  return Object.entries(agg).map(([k,v])=>({name:k,w:v/total})).sort((a,b)=>b.w-a.w);
+}
+function Analytics({res,model,sym}){
+  const a=computeAnalytics(res);
+  const holdings=(res.holdings||[]).filter(h=>h.value!=null||h.weight_now!=null);
+  const conc=concentration(holdings);
+  const [cls,setCls]=useState(null);
+  useEffect(()=>{
+    const tks=[...new Set(holdings.map(h=>h.ticker).filter(Boolean))];
+    if(!tks.length){setCls(null);return;}
+    let alive=true;
+    fetch(API+"/classify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tickers:tks})})
+      .then(r=>r.ok?r.json():null).then(j=>{if(alive)setCls(j&&j.classifications?j.classifications:null);}).catch(()=>{});
+    return()=>{alive=false;};
+  },[res]);
+  const sectorAgg=aggregateBy(holdings,cls,"sector");
+  const industryAgg=aggregateBy(holdings,cls,"industry");
+  const sectorHHI=sectorAgg.reduce((s,x)=>s+x.w*x.w,0);
+  const fp=v=>(v==null||!isFinite(v))?"—":(v*100).toFixed(1)+"%";
+  const fr=v=>(v==null)?"—":(v===Infinity?"∞":(!isFinite(v)?"—":v.toFixed(2)));
+  useEffect(()=>{
+    if(!window.Chart)return;
+    const palette=["#9666e3","#1892f3","#22c55e","#f59e0b","#ef4444","#06b6d4","#8b5cf6","#ec4899","#10b981","#f97316","#3b82f6","#a78bfa"];
+    const pe=document.getElementById("compchart");
+    if(pe){if(pe._c)pe._c.destroy();
+      const items=holdings.map(h=>({t:h.ticker,v:h.value!=null?h.value:(h.weight_now||0)})).filter(x=>x.v>0).sort((x,y)=>y.v-x.v);
+      pe._c=new Chart(pe,{type:"doughnut",data:{labels:items.map(x=>x.t),
+        datasets:[{data:items.map(x=>x.v),backgroundColor:items.map((_,i)=>palette[i%palette.length]),borderColor:"#141417",borderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:"#bbb",usePointStyle:true,boxWidth:8,font:{size:10}}}}}});
+    }
+    const be=document.getElementById("retchart");
+    if(be){if(be._c)be._c.destroy();
+      const items=holdings.map(h=>({t:h.ticker,r:(h.pnl_pct!=null?h.pnl_pct:h.contribution_pp)})).filter(x=>x.r!=null).sort((x,y)=>y.r-x.r);
+      be._c=new Chart(be,{type:"bar",data:{labels:items.map(x=>x.t),
+        datasets:[{data:items.map(x=>x.r),backgroundColor:items.map(x=>x.r>=0?"#22c55e":"#ef4444"),borderRadius:4}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+          tooltip:{callbacks:{label:c=>" "+Number(c.parsed.y).toFixed(1)+"%"}}},
+          scales:{x:{grid:{display:false},ticks:{color:"#777",font:{size:9}}},
+            y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:v=>v+"%"}}}}});
+    }
+    return()=>{["compchart","retchart"].forEach(id=>{const e=document.getElementById(id);if(e&&e._c)e._c.destroy();});};
+  },[res]);
+  useEffect(()=>{
+    if(!window.Chart||!cls)return;
+    const pal=["#9666e3","#1892f3","#22c55e","#f59e0b","#ef4444","#06b6d4","#8b5cf6","#ec4899","#10b981","#f97316","#3b82f6","#a78bfa","#eab308","#14b8a6"];
+    const draw=(id,data)=>{const e=document.getElementById(id);if(!e)return;if(e._c)e._c.destroy();
+      e._c=new Chart(e,{type:"doughnut",data:{labels:data.map(x=>x.name),
+        datasets:[{data:data.map(x=>+(x.w*100).toFixed(2)),backgroundColor:data.map((_,i)=>pal[i%pal.length]),borderColor:"#141417",borderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:"#bbb",usePointStyle:true,boxWidth:8,font:{size:10}}},
+          tooltip:{callbacks:{label:c=>" "+c.label+": "+Number(c.parsed).toFixed(1)+"%"}}}}});};
+    if(sectorAgg.length)draw("sectorchart",sectorAgg);
+    if(industryAgg.length)draw("industrychart",industryAgg);
+    return()=>{["sectorchart","industrychart"].forEach(id=>{const e=document.getElementById(id);if(e&&e._c)e._c.destroy();});};
+  },[cls]);
+  if(a.n<3)return null;
+  return(
+    <div>
+      <div className="lbl" style={{margin:"0 0 1rem"}}>Portfolio analytics</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:12,marginBottom:"1.5rem"}}>
+        <Kpi k="Annualized return" v={fp(a.annReturn)} cls={a.annReturn>=0?"pos":"neg"}/>
+        <Kpi k="Volatility" v={fp(a.volatility)}/>
+        <Kpi k="Sharpe" v={fr(a.sharpe)} cls={a.sharpe>=0?"pos":"neg"}/>
+        <Kpi k="Sortino" v={fr(a.sortino)} cls={a.sortino>=0?"pos":"neg"}/>
+        <Kpi k="Calmar" v={fr(a.calmar)} cls={a.calmar>=0?"pos":"neg"}/>
+        <Kpi k="Max drawdown" v={fp(a.maxDD)} cls="neg"/>
+        <Kpi k="VaR (95%)" v={fp(a.var95)} cls="neg"/>
+        <Kpi k="CVaR (95%)" v={fp(a.cvar95)} cls="neg"/>
+        <Kpi k="Win rate" v={fp(a.winRate)}/>
+      </div>
+      <div className="rgrid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.5rem",marginBottom:"1.5rem"}}>
+        <div className="card" style={{padding:"1.5rem"}}>
+          <div className="lbl" style={{marginBottom:"1rem"}}>Composition</div>
+          <div style={{position:"relative",height:260}}><canvas id="compchart"/></div>
+        </div>
+        <div className="card" style={{padding:"1.5rem"}}>
+          <div className="lbl" style={{marginBottom:"1rem"}}>Stock returns</div>
+          <div style={{position:"relative",height:260}}><canvas id="retchart"/></div>
+        </div>
+      </div>
+      <div className="card" style={{padding:"1.5rem",marginBottom:"1.5rem"}}>
+        <div className="lbl" style={{marginBottom:"1rem"}}>Concentration</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:12}}>
+          <Kpi k="Holdings" v={conc.count}/>
+          <Kpi k="Effective stocks" v={conc.eff?conc.eff.toFixed(1):"—"}/>
+          <Kpi k="Top 5" v={fp(conc.top5)}/>
+          <Kpi k="Top 10" v={fp(conc.top10)}/>
+          <Kpi k="HHI" v={conc.hhi?conc.hhi.toFixed(3):"—"}/>
+        </div>
+      </div>
+      {cls&&sectorAgg.length>0&&(
+        <div className="rgrid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.5rem",marginBottom:"1.5rem"}}>
+          <div className="card" style={{padding:"1.5rem"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
+              <div className="lbl">Sector allocation</div>
+              <div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)"}}>Eff. sectors {sectorHHI>0?(1/sectorHHI).toFixed(1):"\u2014"}</div>
+            </div>
+            <div style={{position:"relative",height:260}}><canvas id="sectorchart"/></div>
+          </div>
+          <div className="card" style={{padding:"1.5rem"}}>
+            <div className="lbl" style={{marginBottom:"1rem"}}>Industry allocation</div>
+            <div style={{position:"relative",height:260}}><canvas id="industrychart"/></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function Kpi({k,v,cls}){return <div className="kpi"><div className="k">{k}</div><div className={"v "+(cls||"")}>{v}</div></div>;}
 function MetRow({label,v}){return <div style={{display:"flex",justifyContent:"space-between",fontSize:".84rem",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(255,255,255,.55)"}}>{label}</span><span style={{fontWeight:500,color:"#fff"}}>{v}</span></div>;}
 
@@ -3492,8 +3653,8 @@ function Profile(){
 /* ── Canonical clean-URL routing (site served at domain root) ──
    page key -> pretty path. FILE_PAGES are real .html files (served by
    GitHub Pages extension fallback); the rest are in-app SPA views.     */
-const ROUTES={home:"/",research:"/research",calendar:"/calendar",portfolio:"/dashboard",ta:"/technical-analysis",graph:"/graph",wallet:"/wallet",profile:"/profile",contact:"/contact"};
-const FILE_PAGES={calendar:1,ta:1,graph:1};
+const ROUTES={home:"/",research:"/research",calendar:"/calendar",portfolio:"/dashboard",ta:"/technical-analysis",graph:"/graph",wallet:"/wallet",profile:"/profile",contact:"/contact",privacy:"/privacy",terms:"/terms",disclaimer:"/disclaimer"};
+const FILE_PAGES={calendar:1,ta:1,graph:1,privacy:1,terms:1,disclaimer:1};
 const PATH2PAGE=(()=>{const m={"":"home"};Object.keys(ROUTES).forEach(k=>{if(!FILE_PAGES[k])m[ROUTES[k]]=k;});return m;})();
 function initPage(){
   const p=(window.location.pathname||"/").replace(/\/+$/,"")||"/";
