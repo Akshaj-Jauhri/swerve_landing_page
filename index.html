@@ -3654,7 +3654,7 @@ function Profile(){
    page key -> pretty path. FILE_PAGES are real .html files (served by
    GitHub Pages extension fallback); the rest are in-app SPA views.     */
 const ROUTES={home:"/",research:"/research",calendar:"/calendar",portfolio:"/dashboard",ta:"/technical-analysis",graph:"/graph",wallet:"/wallet",profile:"/profile",contact:"/contact",privacy:"/privacy",terms:"/terms",disclaimer:"/disclaimer"};
-const FILE_PAGES={calendar:1,ta:1,graph:1,privacy:1,terms:1,disclaimer:1};
+const FILE_PAGES={calendar:1,ta:1,graph:1,portfolio:1,privacy:1,terms:1,disclaimer:1};
 const PATH2PAGE=(()=>{const m={"":"home"};Object.keys(ROUTES).forEach(k=>{if(!FILE_PAGES[k])m[ROUTES[k]]=k;});return m;})();
 function initPage(){
   const p=(window.location.pathname||"/").replace(/\/+$/,"")||"/";
@@ -3685,7 +3685,7 @@ function App(){
         {page==="wallet"   && <Wallet/>}
         {page==="profile"  && <Profile/>}
         {page==="contact"  && <Contact/>}
-        {page==="portfolio" && <Portfolio/>}
+        {/* Dashboard is now the standalone dashboard.html (routed via FILE_PAGES.portfolio -> /dashboard) */}
       </main>
       <Foot go={go}/>
     </>
