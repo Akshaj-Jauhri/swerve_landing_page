@@ -928,25 +928,59 @@ function Analytics({res,model,sym}){
 }
 function RebalanceActivity({res,sym}){
   const a=res.rebalance_activity;
-  if(!a||!a.events||a.events.length<2)return null;   // need at least one real rebalance
+  const series=(a&&a.series)||[];
+  const daily=a&&a.mode==="daily";
+  useEffect(()=>{
+    if(!window.Chart)return;
+    const el=document.getElementById("pnlchart");if(!el)return;
+    if(el._c)el._c.destroy();
+    if(!series.length)return;
+    const money=v=>sym+Number(v).toLocaleString(undefined,{maximumFractionDigits:0});
+    el._c=new Chart(el,{data:{labels:series.map(p=>p.date),datasets:[
+      {type:"bar",label:daily?"Realized P&L (day)":"Realized P&L (rebalance)",
+        data:series.map(p=>p.realized),
+        backgroundColor:series.map(p=>p.realized>=0?"#22c55e":"#ef4444"),yAxisID:"y"},
+      {type:"line",label:"Cumulative realized",data:series.map(p=>p.cum),
+        borderColor:"#9666e3",borderWidth:2,pointRadius:0,tension:.2,yAxisID:"y1"}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>" "+c.dataset.label+": "+money(c.parsed.y)}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#777",font:{size:9},maxTicksLimit:12}},
+        y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:v=>money(v)}},
+        y1:{position:"right",grid:{display:false},ticks:{color:"#9666e3",font:{size:10},callback:v=>money(v)}}}}});
+    return()=>{if(el._c)el._c.destroy();};
+  },[res]);
+
+  if(!a||((a.events||[]).length<2 && series.length===0))return null;
   const money=v=>(v==null?"—":(v<0?"-":"")+sym+Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:0}));
-  const reb=a.events.filter(e=>!e.initial);
+  const reb=(a.events||[]).filter(e=>!e.initial);
   const totalPnl=(a.total_realized||0)+(a.unrealized||0);
   return(
     <div style={{marginBottom:"1.5rem"}}>
       <div className="lbl" style={{margin:"0 0 .4rem"}}>Rebalance activity · realized P&amp;L</div>
-      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1rem",maxWidth:640,lineHeight:1.6}}>
-        Booked when a name is trimmed or exited on each schedule date (average cost, frictionless).
-        This is a breakdown of returns already in the NAV — not additional to it.
+      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1rem",maxWidth:660,lineHeight:1.6}}>
+        {daily
+          ?"Daily-rebalance mode: realized P&L is booked every day as positions are trimmed back to target (average cost, frictionless)."
+          :"Drift mode: realized P&L is booked on each schedule date as positions are trimmed or exited (average cost, frictionless)."}
+        {" "}A breakdown of returns already in the NAV — not additional to it.
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:"1.25rem"}}>
         <Kpi k="Realized P&L" v={money(a.total_realized)} cls={(a.total_realized||0)>=0?"pos":"neg"}/>
         <Kpi k="Unrealized (open)" v={money(a.unrealized)} cls={(a.unrealized||0)>=0?"pos":"neg"}/>
         <Kpi k="Total P&L" v={money(totalPnl)} cls={totalPnl>=0?"pos":"neg"}/>
       </div>
+      {series.length>0 && (
+        <div className="card" style={{padding:"1.5rem",marginBottom:"1.25rem"}}>
+          <div className="lbl" style={{marginBottom:".8rem"}}>Realized P&amp;L over time</div>
+          <div style={{position:"relative",height:280}}><canvas id="pnlchart"/></div>
+        </div>
+      )}
+      {reb.length>0 && (
       <div className="card" style={{padding:"1.5rem",overflowX:"auto"}}>
+        <div className="lbl" style={{marginBottom:"1rem"}}>{daily?"By schedule period":"By rebalance date"}</div>
         <table className="dt"><thead><tr>
-          <th>Rebalance date</th><th>Turnover</th><th>Realized P&amp;L</th><th>Booked on (sells)</th>
+          <th>{daily?"Period from":"Rebalance date"}</th><th>Turnover</th><th>Realized P&amp;L</th><th>Booked on (sells)</th>
         </tr></thead>
         <tbody>{reb.map((e,i)=>(
           <tr key={i}>
@@ -954,10 +988,10 @@ function RebalanceActivity({res,sym}){
             <td>{money(e.turnover)}</td>
             <td className={e.realized_pnl>=0?"pos":"neg"}>{money(e.realized_pnl)}</td>
             <td style={{color:"rgba(255,255,255,.55)",fontSize:".8rem"}}>
-              {e.names.filter(n=>n.action==="sell").slice(0,4).map(n=>`${n.ticker} ${n.realized_pnl>=0?"+":""}${money(n.realized_pnl)}`).join(", ")||"—"}
+              {(e.names||[]).slice(0,4).map(n=>`${n.ticker} ${n.realized_pnl>=0?"+":""}${money(n.realized_pnl)}`).join(", ")||"—"}
             </td>
           </tr>))}</tbody></table>
-      </div>
+      </div>)}
     </div>
   );
 }
