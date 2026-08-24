@@ -404,6 +404,11 @@ function App(){
             <div style={{color:"rgba(255,255,255,.4)",fontSize:".8rem",marginTop:5}}>
               Columns: Ticker, {model==="quantity"?"Quantity, [Purchase price]":"Weight"}</div>
           </label>)}
+        {tab==="upload" && (
+          <div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)",marginTop:8,textAlign:"center"}}>
+            Not sure of the format? <a href={API+"/template"} target="_blank" rel="noopener"
+              style={{color:"#9666e3",fontWeight:500}}>Download the sample template</a> — it shows every accepted layout (dated weights, simple weights, quantities).
+          </div>)}
         {tab==="paste" && (
           <textarea className="inp" rows="5" placeholder={"AAPL, 20\nMSFT, 10\n9988.HK, 15"}
             style={{fontFamily:"monospace"}} onBlur={e=>parsePaste(e.target.value)}/>)}
@@ -741,6 +746,7 @@ function Results({res,cfg,model,lastReq}){
       </div>
 
       <Analytics res={res} model={model} sym={sym}/>
+      <StockPerformance res={res}/>
       <RebalanceActivity res={res} sym={sym}/>
       </div>
     </div>
@@ -923,6 +929,41 @@ function Analytics({res,model,sym}){
           </div>
         </div>
       )}
+    </div>
+  );
+}
+function StockPerformance({res}){
+  const hs=res.holdings_series||{};
+  const tickers=Object.keys(hs);
+  useEffect(()=>{
+    if(!window.Chart)return;
+    const el=document.getElementById("stockchart");if(!el)return;
+    if(el._c)el._c.destroy();
+    if(!tickers.length)return;
+    const pal=["#9666e3","#1892f3","#22c55e","#f59e0b","#ef4444","#06b6d4","#8b5cf6","#ec4899","#10b981","#f97316","#3b82f6","#a78bfa","#eab308","#14b8a6","#f472b6","#60a5fa"];
+    // union of dates (use the longest series as the axis)
+    let labels=[];tickers.forEach(t=>{if(hs[t].length>labels.length)labels=hs[t].map(p=>p.date);});
+    const ds=tickers.map((t,i)=>{const m={};hs[t].forEach(p=>m[p.date]=p.value);
+      return {label:t,data:labels.map(d=>m[d]!=null?m[d]:null),borderColor:pal[i%pal.length],
+        borderWidth:1.5,pointRadius:0,pointHoverRadius:3,tension:.2,spanGaps:true};});
+    el._c=new Chart(el,{type:"line",data:{labels,datasets:ds},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+        plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8,font:{size:10}}},
+          tooltip:{mode:"index",intersect:false,callbacks:{label:c=>" "+c.dataset.label+": "+Number(c.parsed.y).toFixed(1)}}},
+        scales:{x:{grid:{display:false},ticks:{color:"#777",font:{size:9},maxTicksLimit:10}},
+          y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10}}}}}});
+    return()=>{if(el._c)el._c.destroy();};
+  },[res]);
+  if(!tickers.length)return null;
+  return(
+    <div style={{marginBottom:"1.5rem"}}>
+      <div className="lbl" style={{margin:"0 0 .4rem"}}>Individual stock performance</div>
+      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1rem"}}>
+        Each holding's price over the period, rebased to 100 at the start so you can compare relative performance.
+      </div>
+      <div className="card" style={{padding:"1.5rem"}}>
+        <div style={{position:"relative",height:320}}><canvas id="stockchart"/></div>
+      </div>
     </div>
   );
 }
