@@ -385,15 +385,8 @@ function App(){
         {schedule && (
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem",padding:"9px 13px",borderRadius:10,
             background:"rgba(150,102,227,.1)",border:"1px solid rgba(150,102,227,.3)",fontSize:".84rem"}}>
-            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}. Edit any weight below or add a date.</span>
+            <span>📅 <b>Weight schedule loaded</b> — {Object.keys(schedule).length} {Object.keys(schedule).length===1?"date":"dates"}. Set drift vs daily-rebalance in the <b>Between dates</b> control. Edit any weight below or add a date.</span>
             <div style={{flex:1}}></div>
-            <label style={{fontSize:".78rem",color:"rgba(255,255,255,.6)",display:"flex",alignItems:"center",gap:6}}>Between dates:
-              <select className="inp" style={{width:"auto",padding:"5px 9px",fontSize:".78rem"}} value={cfg.schedule_rebalance}
-                onChange={e=>setCfg({...cfg,schedule_rebalance:e.target.value})}
-                title="Daily: hold target weights by trading daily. Periodic: rebalance only on schedule dates, drift in between.">
-                <option value="daily" style={{background:"#1a1a1a"}}>Rebalance daily</option>
-                <option value="periodic" style={{background:"#1a1a1a"}}>Drift (hold between dates)</option>
-              </select></label>
             <button className="x" title="Clear schedule" onClick={()=>{setSchedule(null);setMsg({t:"ok",m:"Schedule cleared — now using the weights in the grid."});}}>×</button>
           </div>)}
 
@@ -533,9 +526,24 @@ function App(){
           <Field label="Return basis"><select className="inp" value={cfg.return_basis}
             onChange={e=>setCfg({...cfg,return_basis:e.target.value})}>
             <option value="total">Total (div-adj)</option><option value="price">Price</option></select></Field>
-          {model==="weight"&&<Field label="Weighting"><select className="inp" value={cfg.weighting_mode}
-            onChange={e=>setCfg({...cfg,weighting_mode:e.target.value})}>
-            <option value="buy_hold">Buy &amp; hold</option><option value="rebalance">Daily rebalance</option></select></Field>}
+          {model==="weight"&&(()=>{
+            // One context-aware toggle. "hold" = don't trade between weight changes
+            // (buy&hold when fixed / drift when scheduled); "daily" = hold target by
+            // trading daily. Both cfg fields are kept in sync so the backend picks
+            // the right one whether or not a schedule is present.
+            const sched=scheduleActive();
+            const val=sched?(cfg.schedule_rebalance==="daily"?"daily":"hold")
+                           :(cfg.weighting_mode==="rebalance"?"daily":"hold");
+            return <Field label={sched?"Between dates":"Weighting"}>
+              <select className="inp" value={val}
+                onChange={e=>{const hold=e.target.value==="hold";
+                  setCfg({...cfg,weighting_mode:hold?"buy_hold":"rebalance",
+                                 schedule_rebalance:hold?"periodic":"daily"});}}
+                title="Hold: no trading between weight changes (drift). Daily: hold target weights by trading daily.">
+                <option value="hold">{sched?"Drift (hold between dates)":"Buy & hold"}</option>
+                <option value="daily">{sched?"Rebalance daily":"Daily rebalance"}</option>
+              </select></Field>;
+          })()}
         </div>
         <div style={{display:"flex",gap:10,marginTop:"1.4rem",alignItems:"center",flexWrap:"wrap"}}>
           <button className="gbtn gbtn-ghost" onClick={resolve} disabled={busy}>Resolve tickers</button>
@@ -733,6 +741,7 @@ function Results({res,cfg,model,lastReq}){
       </div>
 
       <Analytics res={res} model={model} sym={sym}/>
+      <RebalanceActivity res={res} sym={sym}/>
       </div>
     </div>
   );
@@ -790,42 +799,7 @@ function EmailSignup({lastReq}){
   );
 }
 
-/* ── Portfolio analytics, computed client-side from the returned NAV series.
-   Mirrors the Streamlit dashboard's ratios (rf = 5% annual, 252 trading days). ── */
-const RF_RATE=0.05;
-function _std(arr){ // sample std (ddof=1) to match pandas .std()
-  const n=arr.length; if(n<2)return 0;
-  const m=arr.reduce((a,b)=>a+b,0)/n;
-  return Math.sqrt(arr.reduce((a,b)=>a+(b-m)*(b-m),0)/(n-1));
-}
-function _quantile(sorted,q){ // linear interpolation, like pandas .quantile()
-  if(!sorted.length)return 0;
-  const pos=(sorted.length-1)*q, base=Math.floor(pos), rest=pos-base;
-  return sorted[base+1]!=null?sorted[base]+rest*(sorted[base+1]-sorted[base]):sorted[base];
-}
-function computeAnalytics(res){
-  const vals=(res.nav||[]).map(p=>p.value).filter(v=>v!=null&&v>0);
-  const out={n:vals.length};
-  if(vals.length<3)return out;
-  const rets=[]; for(let i=1;i<vals.length;i++)rets.push(vals[i]/vals[i-1]-1);
-  const mean=rets.reduce((a,b)=>a+b,0)/rets.length;
-  const annRet=mean*252, annVol=_std(rets)*Math.sqrt(252);
-  out.annReturn=annRet; out.volatility=annVol;
-  out.sharpe=annVol>0?(annRet-RF_RATE)/annVol:0;
-  const downside=rets.filter(r=>r<0);
-  const dDev=_std(downside)*Math.sqrt(252);
-  out.sortino=downside.length?(dDev>0?(annRet-RF_RATE)/dDev:0):(annRet>RF_RATE?Infinity:0);
-  let cum=1,peak=1,maxDD=0;
-  for(const r of rets){cum*=(1+r);if(cum>peak)peak=cum;const dd=(cum-peak)/peak;if(dd<maxDD)maxDD=dd;}
-  out.maxDD=maxDD;
-  out.calmar=maxDD<0?annRet/Math.abs(maxDD):0;
-  const sorted=[...rets].sort((a,b)=>a-b);
-  out.var95=_quantile(sorted,0.05);
-  const tail=rets.filter(r=>r<=out.var95);
-  out.cvar95=tail.length?tail.reduce((a,b)=>a+b,0)/tail.length:out.var95;
-  out.winRate=rets.filter(r=>r>0).length/rets.length;
-  return out;
-}
+/* Ratios come from the backend (res.metrics) — single source of truth. */
 function concentration(holdings){
   let ws=holdings.map(h=>h.weight_now!=null?h.weight_now/100:null).filter(x=>x!=null);
   if(!ws.length){const tot=holdings.reduce((s,h)=>s+(h.value||0),0);ws=tot>0?holdings.map(h=>(h.value||0)/tot):[];}
@@ -845,7 +819,10 @@ function aggregateBy(holdings,cls,key){
   return Object.entries(agg).map(([k,v])=>({name:k,w:v/total})).sort((a,b)=>b.w-a.w);
 }
 function Analytics({res,model,sym}){
-  const a=computeAnalytics(res);
+  const m=res.metrics||{};
+  const a={annReturn:m["Annualised Return"],volatility:m["Volatility"],sharpe:m["Sharpe"],
+    sortino:m["Sortino"],calmar:m["Calmar"],maxDD:m["Max Drawdown"],
+    var95:m["VaR 95"],cvar95:m["CVaR 95"],winRate:m["Win Rate"],n:(res.nav||[]).length};
   const holdings=(res.holdings||[]).filter(h=>h.value!=null||h.weight_now!=null);
   const conc=concentration(holdings);
   const [cls,setCls]=useState(null);
@@ -946,6 +923,41 @@ function Analytics({res,model,sym}){
           </div>
         </div>
       )}
+    </div>
+  );
+}
+function RebalanceActivity({res,sym}){
+  const a=res.rebalance_activity;
+  if(!a||!a.events||a.events.length<2)return null;   // need at least one real rebalance
+  const money=v=>(v==null?"—":(v<0?"-":"")+sym+Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:0}));
+  const reb=a.events.filter(e=>!e.initial);
+  const totalPnl=(a.total_realized||0)+(a.unrealized||0);
+  return(
+    <div style={{marginBottom:"1.5rem"}}>
+      <div className="lbl" style={{margin:"0 0 .4rem"}}>Rebalance activity · realized P&amp;L</div>
+      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1rem",maxWidth:640,lineHeight:1.6}}>
+        Booked when a name is trimmed or exited on each schedule date (average cost, frictionless).
+        This is a breakdown of returns already in the NAV — not additional to it.
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:"1.25rem"}}>
+        <Kpi k="Realized P&L" v={money(a.total_realized)} cls={(a.total_realized||0)>=0?"pos":"neg"}/>
+        <Kpi k="Unrealized (open)" v={money(a.unrealized)} cls={(a.unrealized||0)>=0?"pos":"neg"}/>
+        <Kpi k="Total P&L" v={money(totalPnl)} cls={totalPnl>=0?"pos":"neg"}/>
+      </div>
+      <div className="card" style={{padding:"1.5rem",overflowX:"auto"}}>
+        <table className="dt"><thead><tr>
+          <th>Rebalance date</th><th>Turnover</th><th>Realized P&amp;L</th><th>Booked on (sells)</th>
+        </tr></thead>
+        <tbody>{reb.map((e,i)=>(
+          <tr key={i}>
+            <td>{e.date}</td>
+            <td>{money(e.turnover)}</td>
+            <td className={e.realized_pnl>=0?"pos":"neg"}>{money(e.realized_pnl)}</td>
+            <td style={{color:"rgba(255,255,255,.55)",fontSize:".8rem"}}>
+              {e.names.filter(n=>n.action==="sell").slice(0,4).map(n=>`${n.ticker} ${n.realized_pnl>=0?"+":""}${money(n.realized_pnl)}`).join(", ")||"—"}
+            </td>
+          </tr>))}</tbody></table>
+      </div>
     </div>
   );
 }
