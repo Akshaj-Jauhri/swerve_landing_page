@@ -519,7 +519,9 @@ function App(){
           </select>
           {(bmCustom||!BM.some(([l,t])=>t===cfg.benchmark)) &&
             <input className="inp" style={{marginTop:8}} placeholder="Yahoo ticker, e.g. ^GSPC, VOO, 000300.SS"
-              value={cfg.benchmark} onChange={e=>setCfg({...cfg,benchmark:e.target.value})}/>}</Field>
+              value={cfg.benchmark} onChange={e=>setCfg({...cfg,benchmark:e.target.value})}/>}
+          <div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginTop:6,lineHeight:1.5}}>
+            This is your <b style={{color:"rgba(255,255,255,.65)"}}>base benchmark</b> — used for Alpha, Beta, Tracking error and all vs-benchmark stats. You can add more benchmarks to the chart afterwards for visual comparison only.</div></Field>
           <Field label="Start date"><input className="inp" type="date" value={cfg.start_date}
             onChange={e=>setCfg({...cfg,start_date:e.target.value})}/></Field>
           <Field label="End date"><input className="inp" type="date" value={cfg.end_date}
@@ -650,6 +652,22 @@ function Results({res,cfg,model,lastReq}){
   const capRef=useRef(null);
   const [exp,setExp]=useState(null);
   const [chartMode,setChartMode]=useState("rebased");
+  const [extraBench,setExtraBench]=useState([]);   // [{ticker, series:[{date,value}]}]
+  const [bmAdd,setBmAdd]=useState("");
+  const [bmBusy,setBmBusy]=useState(false);
+  useEffect(()=>{setExtraBench([]);},[res]);       // reset comparisons on a new compute
+  async function addBenchmark(){
+    const t=bmAdd.trim();if(!t)return;
+    if(t.toLowerCase()===(res.benchmark_ticker||"").toLowerCase()||extraBench.some(x=>x.ticker.toLowerCase()===t.toLowerCase())){setBmAdd("");return;}
+    setBmBusy(true);
+    try{
+      const r=await fetch(API+"/benchmarks",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({tickers:[t],start_date:res.nav[0].date,end_date:res.as_of,base_currency:cfg.base_currency,return_basis:cfg.return_basis})});
+      const j=await r.json();const s=j.benchmarks&&j.benchmarks[t];
+      if(s&&s.length)setExtraBench(p=>[...p,{ticker:t,series:s}]); else setMsg({t:"err",m:"No data for benchmark "+t});
+    }catch(e){setMsg({t:"err",m:"Couldn't add benchmark — is the API up?"});}
+    finally{setBmBusy(false);setBmAdd("");}
+  }
   const fundRet=res.nav.length?res.nav[res.nav.length-1].value/res.nav[0].value-1:null;
   const bmRet=res.benchmark.length?res.benchmark[res.benchmark.length-1].value/res.benchmark[0].value-1:null;
   const excess=(fundRet!=null&&bmRet!=null)?fundRet-bmRet:null;
@@ -696,9 +714,16 @@ function Results({res,cfg,model,lastReq}){
         <Kpi k="Max drawdown" v={m["Max Drawdown"]!=null?(m["Max Drawdown"]*100).toFixed(1)+"%":"—"} cls="neg"/>
       </div>
 
+      {excess!=null && (
+        <div style={{fontSize:".92rem",marginBottom:".7rem",color:"rgba(255,255,255,.85)"}}>
+          Portfolio is <b style={{color:excess>=0?"#22c55e":"#ef4444"}}>
+            {excess>=0?"ahead of":"behind"} {res.benchmark_ticker} by {(Math.abs(excess)*100).toFixed(2)}%
+          </b> as of {res.as_of}.
+        </div>)}
+
       <div className="card" style={{padding:"1.5rem",marginBottom:"1.5rem"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:10}}>
-          <div className="lbl">Fund vs {res.benchmark_ticker} · {cfg.base_currency}</div>
+          <div className="lbl">Fund vs {res.benchmark_ticker}{extraBench.length?" +"+extraBench.length:""} · {cfg.base_currency}</div>
           <div style={{display:"flex",gap:4,background:"rgba(255,255,255,.04)",padding:4,borderRadius:10}}>
             <button className={"tab"+(chartMode==="rebased"?" on":"")} style={{fontSize:".76rem",padding:"6px 12px"}}
               onClick={()=>setChartMode("rebased")}>Rebased to 100</button>
@@ -707,8 +732,22 @@ function Results({res,cfg,model,lastReq}){
           </div>
         </div>
         <div style={{position:"relative",height:320}}><canvas id="navchart"/></div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:"1rem"}}>
+          <span style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Add benchmarks for comparison:</span>
+          <input className="inp" style={{width:170,padding:"6px 10px",fontSize:".82rem"}} placeholder="Yahoo ticker (e.g. QQQ)"
+            value={bmAdd} onChange={e=>setBmAdd(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addBenchmark();}}/>
+          <button className="gbtn gbtn-ghost" style={{fontSize:".8rem",padding:"7px 14px"}} onClick={addBenchmark} disabled={bmBusy}>
+            {bmBusy?"Adding…":"+ Add"}</button>
+          {extraBench.map((x,i)=>(
+            <span key={x.ticker} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".78rem",
+              background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:20,padding:"3px 6px 3px 11px"}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:BM_PALETTE[i%BM_PALETTE.length]}}/>{x.ticker}
+              <button className="x" onClick={()=>setExtraBench(p=>p.filter(y=>y.ticker!==x.ticker))}>×</button>
+            </span>))}
+          <span style={{fontSize:".72rem",color:"rgba(255,255,255,.35)"}}>chart only — calculations use {res.benchmark_ticker}</span>
+        </div>
       </div>
-      <NavChart res={res} mode={chartMode} sym={sym}/>
+      <NavChart res={res} mode={chartMode} sym={sym} extra={extraBench}/>
 
       <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr",gap:"1.5rem",marginBottom:"1.5rem"}} className="rgrid">
         <div className="card" style={{padding:"1.5rem",overflowX:"auto"}}>
@@ -1216,7 +1255,8 @@ function RebalanceActivity({res,sym}){
 function Kpi({k,v,cls}){return <div className="kpi"><div className="k">{k}</div><div className={"v "+(cls||"")}>{v}</div></div>;}
 function MetRow({label,v}){return <div style={{display:"flex",justifyContent:"space-between",fontSize:".84rem",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(255,255,255,.55)"}}>{label}</span><span style={{fontWeight:500}}>{v}</span></div>;}
 
-function NavChart({res,mode,sym}){
+const BM_PALETTE=["#22c55e","#f59e0b","#ec4899","#06b6d4","#a78bfa","#f97316","#eab308","#14b8a6"];
+function NavChart({res,mode,sym,extra}){
   useEffect(()=>{
     const el=document.getElementById("navchart");if(!el||!window.Chart)return;
     if(el._c)el._c.destroy();
@@ -1227,9 +1267,13 @@ function NavChart({res,mode,sym}){
     const money=v=>sym+Number(v).toLocaleString(undefined,{maximumFractionDigits:0});
     const fmt=v=>v==null?"—":(isVal?money(v):Number(v).toFixed(2));
     const yTick=v=>isVal?(Math.abs(v)>=1000?sym+(v/1000).toFixed(v>=1e6?1:0)+(v>=1e6?"M":"k"):sym+v):v;
+    const extraDs=(extra||[]).map((x,i)=>{const mm={};x.series.forEach(p=>mm[p.date]=p.value);
+      return {label:x.ticker,data:labels.map(d=>mm[d]!=null?mm[d]*scale:null),
+        borderColor:BM_PALETTE[i%BM_PALETTE.length],borderWidth:1.5,borderDash:[3,3],pointRadius:0,pointHoverRadius:4,tension:.25,spanGaps:true};});
     el._c=new Chart(el,{type:"line",data:{labels,datasets:[
       {label:"Fund",data:res.nav.map(p=>p.value*scale),borderColor:"#9666e3",backgroundColor:"rgba(150,102,227,.08)",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.25,fill:true},
-      {label:res.benchmark_ticker,data:labels.map(d=>bmap[d]!=null?bmap[d]*scale:null),borderColor:"#1892f3",borderWidth:2,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,tension:.25}
+      {label:res.benchmark_ticker,data:labels.map(d=>bmap[d]!=null?bmap[d]*scale:null),borderColor:"#1892f3",borderWidth:2,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,tension:.25},
+      ...extraDs
     ]},options:{responsive:true,maintainAspectRatio:false,
       interaction:{mode:"index",intersect:false},
       plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8}},
@@ -1238,7 +1282,7 @@ function NavChart({res,mode,sym}){
           callbacks:{label:c=>"  "+c.dataset.label+": "+fmt(c.parsed.y)}}},
       scales:{x:{grid:{display:false},ticks:{color:"#777",maxTicksLimit:8,font:{size:10}}},
         y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:yTick}}}}});
-  },[res,mode,sym]);
+  },[res,mode,sym,extra]);
   return null;
 }
 
