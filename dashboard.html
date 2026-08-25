@@ -653,12 +653,13 @@ function Results({res,cfg,model,lastReq}){
   const [exp,setExp]=useState(null);
   const [chartMode,setChartMode]=useState("rebased");
   const [extraBench,setExtraBench]=useState([]);   // [{ticker, series:[{date,value}]}]
-  const [bmAdd,setBmAdd]=useState("");
+  const [bmSel,setBmSel]=useState("");             // dropdown selection
+  const [bmAdd,setBmAdd]=useState("");             // custom-ticker text
   const [bmBusy,setBmBusy]=useState(false);
   useEffect(()=>{setExtraBench([]);},[res]);       // reset comparisons on a new compute
-  async function addBenchmark(){
-    const t=bmAdd.trim();if(!t)return;
-    if(t.toLowerCase()===(res.benchmark_ticker||"").toLowerCase()||extraBench.some(x=>x.ticker.toLowerCase()===t.toLowerCase())){setBmAdd("");return;}
+  async function addBenchmark(t){
+    t=(t||"").trim();if(!t||t==="__custom__")return;
+    if(t.toLowerCase()===(res.benchmark_ticker||"").toLowerCase()||extraBench.some(x=>x.ticker.toLowerCase()===t.toLowerCase())){setBmSel("");setBmAdd("");return;}
     setBmBusy(true);
     try{
       const r=await fetch(API+"/benchmarks",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -666,7 +667,7 @@ function Results({res,cfg,model,lastReq}){
       const j=await r.json();const s=j.benchmarks&&j.benchmarks[t];
       if(s&&s.length)setExtraBench(p=>[...p,{ticker:t,series:s}]); else setMsg({t:"err",m:"No data for benchmark "+t});
     }catch(e){setMsg({t:"err",m:"Couldn't add benchmark — is the API up?"});}
-    finally{setBmBusy(false);setBmAdd("");}
+    finally{setBmBusy(false);setBmSel("");setBmAdd("");}
   }
   const fundRet=res.nav.length?res.nav[res.nav.length-1].value/res.nav[0].value-1:null;
   const bmRet=res.benchmark.length?res.benchmark[res.benchmark.length-1].value/res.benchmark[0].value-1:null;
@@ -734,9 +735,18 @@ function Results({res,cfg,model,lastReq}){
         <div style={{position:"relative",height:320}}><canvas id="navchart"/></div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:"1rem"}}>
           <span style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Add benchmarks for comparison:</span>
-          <input className="inp" style={{width:170,padding:"6px 10px",fontSize:".82rem"}} placeholder="Yahoo ticker (e.g. QQQ)"
-            value={bmAdd} onChange={e=>setBmAdd(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addBenchmark();}}/>
-          <button className="gbtn gbtn-ghost" style={{fontSize:".8rem",padding:"7px 14px"}} onClick={addBenchmark} disabled={bmBusy}>
+          <select className="inp" style={{width:"auto",padding:"6px 10px",fontSize:".82rem"}} value={bmSel}
+            onChange={e=>setBmSel(e.target.value)}>
+            <option value="" style={{background:"#1a1a1a"}}>Select benchmark…</option>
+            {BM.filter(([l,t])=>t!==res.benchmark_ticker&&!extraBench.some(x=>x.ticker===t))
+               .map(([l,t])=><option key={t} value={t} style={{background:"#1a1a1a"}}>{l} ({t})</option>)}
+            <option value="__custom__" style={{background:"#1a1a1a"}}>Custom ticker…</option>
+          </select>
+          {bmSel==="__custom__" &&
+            <input className="inp" style={{width:160,padding:"6px 10px",fontSize:".82rem"}} placeholder="Yahoo ticker (e.g. QQQ)"
+              value={bmAdd} onChange={e=>setBmAdd(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addBenchmark(bmAdd);}}/>}
+          <button className="gbtn gbtn-ghost" style={{fontSize:".8rem",padding:"7px 14px"}} disabled={bmBusy||!bmSel}
+            onClick={()=>addBenchmark(bmSel==="__custom__"?bmAdd:bmSel)}>
             {bmBusy?"Adding…":"+ Add"}</button>
           {extraBench.map((x,i)=>(
             <span key={x.ticker} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".78rem",
