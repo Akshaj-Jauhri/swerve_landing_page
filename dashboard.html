@@ -656,7 +656,30 @@ function Results({res,cfg,model,lastReq}){
   const [bmSel,setBmSel]=useState("");             // dropdown selection
   const [bmAdd,setBmAdd]=useState("");             // custom-ticker text
   const [bmBusy,setBmBusy]=useState(false);
-  useEffect(()=>{setExtraBench([]);},[res]);       // reset comparisons on a new compute
+  const [hideBase,setHideBase]=useState(false);    // hide base benchmark line (calc unaffected)
+  const [extraStocks,setExtraStocks]=useState([]); // holdings overlaid: [{ticker,series}]
+  const [stockSel,setStockSel]=useState("");
+  const [rangeSel,setRangeSel]=useState([]);       // up to 2 clicked dates
+  useEffect(()=>{setExtraBench([]);setExtraStocks([]);setRangeSel([]);setHideBase(false);},[res]);
+  const addStock=(t)=>{const s=(res.holdings_series||{})[t];
+    if(t&&s&&!extraStocks.some(x=>x.ticker===t))setExtraStocks(p=>[...p,{ticker:t,series:s}]);setStockSel("");};
+  const onPick=(d)=>setRangeSel(p=>p.length===1?[p[0],d]:[d]);
+  const rangeStats=()=>{
+    if(rangeSel.length<2)return null;
+    const [d1,d2]=[...rangeSel].sort();
+    const nv=res.nav.filter(p=>p.date>=d1&&p.date<=d2);
+    if(nv.length<2)return null;
+    const fr=nv[nv.length-1].value/nv[0].value-1;
+    const bmap={};res.benchmark.forEach(p=>bmap[p.date]=p.value);
+    const bs=nv.map(p=>bmap[p.date]).filter(v=>v!=null);
+    const br=bs.length>=2?bs[bs.length-1]/bs[0]-1:null;
+    const rets=[];for(let i=1;i<nv.length;i++)rets.push(nv[i].value/nv[i-1].value-1);
+    const mean=rets.reduce((a,b)=>a+b,0)/rets.length;
+    const sd=Math.sqrt(rets.reduce((a,b)=>a+(b-mean)**2,0)/(rets.length>1?rets.length-1:1));
+    const TD=res.trading_days||252, rf=res.rf_annual!=null?res.rf_annual:0.03;
+    const vol=sd*Math.sqrt(TD), ann=mean*TD, sharpe=vol>0?(ann-rf)/vol:null;
+    return {d1,d2,days:nv.length,fr,br,excess:br!=null?fr-br:null,vol,sharpe};
+  };
   async function addBenchmark(t){
     t=(t||"").trim();if(!t||t==="__custom__")return;
     if(t.toLowerCase()===(res.benchmark_ticker||"").toLowerCase()||extraBench.some(x=>x.ticker.toLowerCase()===t.toLowerCase())){setBmSel("");setBmAdd("");return;}
@@ -734,7 +757,13 @@ function Results({res,cfg,model,lastReq}){
         </div>
         <div style={{position:"relative",height:320}}><canvas id="navchart"/></div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:"1rem"}}>
-          <span style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Add benchmarks for comparison:</span>
+          <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".78rem",
+            background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:20,padding:"3px 8px 3px 11px",opacity:hideBase?.5:1}}>
+            <span style={{width:8,height:8,borderRadius:"50%",background:"#1892f3"}}/>{res.benchmark_ticker} (base)
+            <button className="x" title={hideBase?"Show on chart":"Hide from chart"} onClick={()=>setHideBase(v=>!v)}>{hideBase?"+":"×"}</button>
+          </span>
+          <div style={{flexBasis:"100%",height:0}}></div>
+          <span style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Add benchmark:</span>
           <select className="inp" style={{width:"auto",padding:"6px 10px",fontSize:".82rem"}} value={bmSel}
             onChange={e=>setBmSel(e.target.value)}>
             <option value="" style={{background:"#1a1a1a"}}>Select benchmark…</option>
@@ -746,18 +775,47 @@ function Results({res,cfg,model,lastReq}){
             <input className="inp" style={{width:160,padding:"6px 10px",fontSize:".82rem"}} placeholder="Yahoo ticker (e.g. QQQ)"
               value={bmAdd} onChange={e=>setBmAdd(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addBenchmark(bmAdd);}}/>}
           <button className="gbtn gbtn-ghost" style={{fontSize:".8rem",padding:"7px 14px"}} disabled={bmBusy||!bmSel}
-            onClick={()=>addBenchmark(bmSel==="__custom__"?bmAdd:bmSel)}>
-            {bmBusy?"Adding…":"+ Add"}</button>
+            onClick={()=>addBenchmark(bmSel==="__custom__"?bmAdd:bmSel)}>{bmBusy?"Adding…":"+ Add"}</button>
           {extraBench.map((x,i)=>(
             <span key={x.ticker} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".78rem",
               background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:20,padding:"3px 6px 3px 11px"}}>
               <span style={{width:8,height:8,borderRadius:"50%",background:BM_PALETTE[i%BM_PALETTE.length]}}/>{x.ticker}
               <button className="x" onClick={()=>setExtraBench(p=>p.filter(y=>y.ticker!==x.ticker))}>×</button>
             </span>))}
-          <span style={{fontSize:".72rem",color:"rgba(255,255,255,.35)"}}>chart only — calculations use {res.benchmark_ticker}</span>
+          <div style={{flexBasis:"100%",height:0}}></div>
+          <span style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Add a holding:</span>
+          <select className="inp" style={{width:"auto",padding:"6px 10px",fontSize:".82rem"}} value={stockSel}
+            onChange={e=>addStock(e.target.value)}>
+            <option value="" style={{background:"#1a1a1a"}}>Select holding…</option>
+            {Object.keys(res.holdings_series||{}).filter(t=>!extraStocks.some(x=>x.ticker===t))
+               .map(t=><option key={t} value={t} style={{background:"#1a1a1a"}}>{t}</option>)}
+          </select>
+          {extraStocks.map((x,i)=>(
+            <span key={x.ticker} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:".78rem",
+              background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.12)",borderRadius:20,padding:"3px 6px 3px 11px"}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:STOCK_PALETTE[i%STOCK_PALETTE.length]}}/>{x.ticker}
+              <button className="x" onClick={()=>setExtraStocks(p=>p.filter(y=>y.ticker!==x.ticker))}>×</button>
+            </span>))}
+          <span style={{fontSize:".72rem",color:"rgba(255,255,255,.35)"}}>overlays are chart-only (rebased to 100); stats use {res.benchmark_ticker}</span>
         </div>
+        <div style={{marginTop:".9rem",fontSize:".78rem",color:"rgba(255,255,255,.55)"}}>
+          📍 Click two points on the chart to measure returns between them.
+          {rangeSel.length===1&&<span style={{color:"#9666e3"}}> Start {rangeSel[0]} selected — click the end point.</span>}
+          {rangeSel.length>0&&<button className="x" style={{marginLeft:8}} onClick={()=>setRangeSel([])}>clear</button>}
+        </div>
+        {(()=>{const rs=rangeStats();return rs?(
+          <div className="card" style={{marginTop:".7rem",padding:"1rem 1.2rem",background:"rgba(150,102,227,.08)",border:"1px solid rgba(150,102,227,.3)"}}>
+            <div style={{fontSize:".82rem",fontWeight:600,marginBottom:8}}>{rs.d1} → {rs.d2} · {rs.days} trading days</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,fontSize:".82rem"}}>
+              <div><div style={{color:"rgba(255,255,255,.5)"}}>Portfolio</div><div className={rs.fr>=0?"pos":"neg"} style={{fontWeight:600}}>{pct(rs.fr)}</div></div>
+              <div><div style={{color:"rgba(255,255,255,.5)"}}>{res.benchmark_ticker}</div><div className={(rs.br||0)>=0?"pos":"neg"} style={{fontWeight:600}}>{rs.br!=null?pct(rs.br):"—"}</div></div>
+              <div><div style={{color:"rgba(255,255,255,.5)"}}>Excess</div><div className={(rs.excess||0)>=0?"pos":"neg"} style={{fontWeight:600}}>{rs.excess!=null?pct(rs.excess):"—"}</div></div>
+              <div><div style={{color:"rgba(255,255,255,.5)"}}>Volatility (ann.)</div><div style={{fontWeight:600}}>{(rs.vol*100).toFixed(1)}%</div></div>
+              <div><div style={{color:"rgba(255,255,255,.5)"}}>Sharpe (ann.)</div><div style={{fontWeight:600}}>{rs.sharpe!=null?rs.sharpe.toFixed(2):"—"}</div></div>
+            </div>
+          </div>):null;})()}
       </div>
-      <NavChart res={res} mode={chartMode} sym={sym} extra={extraBench}/>
+      <NavChart res={res} mode={chartMode} sym={sym} extra={extraBench} stocks={extraStocks} hideBase={hideBase} range={rangeSel} onPick={onPick}/>
 
       <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr",gap:"1.5rem",marginBottom:"1.5rem"}} className="rgrid">
         <div className="card" style={{padding:"1.5rem",overflowX:"auto"}}>
@@ -1316,7 +1374,8 @@ function Kpi({k,v,cls}){return <div className="kpi"><div className="k">{k}</div>
 function MetRow({label,v}){return <div style={{display:"flex",justifyContent:"space-between",fontSize:".84rem",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(255,255,255,.55)"}}>{label}</span><span style={{fontWeight:500}}>{v}</span></div>;}
 
 const BM_PALETTE=["#22c55e","#f59e0b","#ec4899","#06b6d4","#a78bfa","#f97316","#eab308","#14b8a6"];
-function NavChart({res,mode,sym,extra}){
+const STOCK_PALETTE=["#e879f9","#fb923c","#4ade80","#38bdf8","#facc15","#f87171","#c084fc","#2dd4bf"];
+function NavChart({res,mode,sym,extra,stocks,hideBase,range,onPick}){
   useEffect(()=>{
     const el=document.getElementById("navchart");if(!el||!window.Chart)return;
     if(el._c)el._c.destroy();
@@ -1327,22 +1386,26 @@ function NavChart({res,mode,sym,extra}){
     const money=v=>sym+Number(v).toLocaleString(undefined,{maximumFractionDigits:0});
     const fmt=v=>v==null?"—":(isVal?money(v):Number(v).toFixed(2));
     const yTick=v=>isVal?(Math.abs(v)>=1000?sym+(v/1000).toFixed(v>=1e6?1:0)+(v>=1e6?"M":"k"):sym+v):v;
-    const extraDs=(extra||[]).map((x,i)=>{const mm={};x.series.forEach(p=>mm[p.date]=p.value);
+    const overlay=(arr,pal,dash)=>(arr||[]).map((x,i)=>{const mm={};x.series.forEach(p=>mm[p.date]=p.value);
       return {label:x.ticker,data:labels.map(d=>mm[d]!=null?mm[d]*scale:null),
-        borderColor:BM_PALETTE[i%BM_PALETTE.length],borderWidth:1.5,borderDash:[3,3],pointRadius:0,pointHoverRadius:4,tension:.25,spanGaps:true};});
-    el._c=new Chart(el,{type:"line",data:{labels,datasets:[
-      {label:"Fund",data:res.nav.map(p=>p.value*scale),borderColor:"#9666e3",backgroundColor:"rgba(150,102,227,.08)",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.25,fill:true},
-      {label:res.benchmark_ticker,data:labels.map(d=>bmap[d]!=null?bmap[d]*scale:null),borderColor:"#1892f3",borderWidth:2,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,tension:.25},
-      ...extraDs
-    ]},options:{responsive:true,maintainAspectRatio:false,
+        borderColor:pal[i%pal.length],borderWidth:1.5,borderDash:dash,pointRadius:0,pointHoverRadius:4,tension:.25,spanGaps:true};});
+    const ds=[{label:"Fund",data:res.nav.map(p=>p.value*scale),borderColor:"#9666e3",backgroundColor:"rgba(150,102,227,.08)",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.25,fill:true}];
+    if(!hideBase)ds.push({label:res.benchmark_ticker,data:labels.map(d=>bmap[d]!=null?bmap[d]*scale:null),borderColor:"#1892f3",borderWidth:2,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,tension:.25});
+    ds.push(...overlay(extra,BM_PALETTE,[3,3]));
+    ds.push(...overlay(stocks,STOCK_PALETTE,[2,2]));
+    const rIdx=(range||[]).map(d=>labels.indexOf(d)).filter(i=>i>=0);
+    if(rIdx.length)ds.push({label:"Selected",data:labels.map((d,i)=>rIdx.includes(i)?res.nav[i].value*scale:null),
+      borderColor:"#fff",backgroundColor:"#fff",showLine:false,pointRadius:labels.map((d,i)=>rIdx.includes(i)?6:0),pointHoverRadius:6});
+    el._c=new Chart(el,{type:"line",data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,
+      onClick:(evt,els,chart)=>{if(!onPick)return;const p=chart.getElementsAtEventForMode(evt,"index",{intersect:false},true);if(p.length)onPick(labels[p[0].index]);},
       interaction:{mode:"index",intersect:false},
-      plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8}},
+      plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8,filter:i=>i.text!=="Selected"}},
         tooltip:{mode:"index",intersect:false,backgroundColor:"rgba(24,24,27,.97)",borderColor:"rgba(150,102,227,.4)",borderWidth:1,
           padding:11,cornerRadius:9,titleColor:"#fff",bodyColor:"#ddd",usePointStyle:true,
-          callbacks:{label:c=>"  "+c.dataset.label+": "+fmt(c.parsed.y)}}},
+          callbacks:{label:c=>c.dataset.label==="Selected"?null:"  "+c.dataset.label+": "+fmt(c.parsed.y)}}},
       scales:{x:{grid:{display:false},ticks:{color:"#777",maxTicksLimit:8,font:{size:10}}},
         y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:yTick}}}}});
-  },[res,mode,sym,extra]);
+  },[res,mode,sym,extra,stocks,hideBase,range]);
   return null;
 }
 
