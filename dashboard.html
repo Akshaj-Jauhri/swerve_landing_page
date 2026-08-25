@@ -982,7 +982,7 @@ function RollingMetrics({res}){
   const hasBench=(res.benchmark||[]).length>0;
   const rf=res.rf_annual!=null?res.rf_annual:0.03;
   const TD=res.trading_days||252;
-  const [win,setWin]=useState(63);
+  const [win,setWin]=useState(21);
   const [metric,setMetric]=useState("sharpe");
   // daily returns + aligned benchmark returns
   const dates=navpts.map(p=>p.date);
@@ -1055,7 +1055,7 @@ function PairCorrelation({res}){
   const tickers=Object.keys(hs);
   const [a,setA]=useState(tickers[0]||"");
   const [b,setB]=useState(tickers[1]||tickers[0]||"");
-  const [win,setWin]=useState(63);
+  const [win,setWin]=useState(21);
   // returns per ticker keyed by date
   const retMap=t=>{const s=hs[t]||[];const m={};for(let i=1;i<s.length;i++)m[s[i].date]=s[i].value/s[i-1].value-1;return m;};
   useEffect(()=>{
