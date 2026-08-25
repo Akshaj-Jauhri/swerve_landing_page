@@ -747,6 +747,9 @@ function Results({res,cfg,model,lastReq}){
 
       <Analytics res={res} model={model} sym={sym}/>
       <StockPerformance res={res}/>
+      <RollingMetrics res={res}/>
+      <CorrelationMatrix res={res}/>
+      <PairCorrelation res={res}/>
       <RebalanceActivity res={res} sym={sym}/>
       </div>
     </div>
@@ -932,6 +935,178 @@ function Analytics({res,model,sym}){
     </div>
   );
 }
+function CorrelationMatrix({res}){
+  const c=res.correlation;
+  if(!c||!c.tickers||c.tickers.length<2)return null;
+  const col=v=>{ // -1..1 -> blue (neg) / neutral / red (pos)
+    if(v>=0)return `rgba(239,68,68,${(0.12+0.6*v).toFixed(3)})`;
+    return `rgba(24,146,243,${(0.12+0.6*Math.abs(v)).toFixed(3)})`;
+  };
+  const tk=c.tickers, m=c.matrix;
+  return(
+    <div style={{marginBottom:"1.5rem"}}>
+      <div className="lbl" style={{margin:"0 0 .4rem"}}>Correlation matrix</div>
+      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1rem"}}>
+        Pairwise correlation of daily returns over the period. {c.avg_pairwise!=null&&<>Average pairwise: <b style={{color:"#fff"}}>{c.avg_pairwise.toFixed(2)}</b> — {c.avg_pairwise<0.3?"well diversified":c.avg_pairwise<0.6?"moderately diversified":"highly correlated"}.</>}
+        {c.most_correlated&&<> Most correlated: {c.most_correlated.a}/{c.most_correlated.b} ({c.most_correlated.v.toFixed(2)}); least: {c.least_correlated.a}/{c.least_correlated.b} ({c.least_correlated.v.toFixed(2)}).</>}
+      </div>
+      <div className="card" style={{padding:"1.25rem",overflowX:"auto"}}>
+        <table style={{borderCollapse:"collapse",fontSize:".72rem"}}>
+          <thead><tr><th style={{padding:"4px 6px"}}></th>
+            {tk.map(t=><th key={t} style={{padding:"4px 6px",color:"rgba(255,255,255,.6)",fontWeight:500,whiteSpace:"nowrap"}}>{t}</th>)}
+          </tr></thead>
+          <tbody>{m.map((row,i)=>(
+            <tr key={i}>
+              <td style={{padding:"4px 8px",color:"rgba(255,255,255,.6)",fontWeight:500,whiteSpace:"nowrap",position:"sticky",left:0,background:"#141417"}}>{tk[i]}</td>
+              {row.map((v,j)=>(
+                <td key={j} title={`${tk[i]} / ${tk[j]}: ${v.toFixed(2)}`}
+                  style={{padding:"6px 8px",textAlign:"center",color:"#fff",
+                    background:i===j?"rgba(150,102,227,.35)":col(v),minWidth:44}}>{v.toFixed(2)}</td>
+              ))}
+            </tr>))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const RM_WINDOWS=[["1M",21],["3M",63],["6M",126],["1Y",252]];
+const RM_METRICS=[["sharpe","Sharpe","ratio"],["vol","Volatility","pct"],["ret","Return (ann.)","pct"],
+                  ["beta","Beta","ratio"],["corr","Corr. to benchmark","ratio"],["dd","Max drawdown","pct"]];
+function _std(a){const n=a.length;if(n<2)return 0;const m=a.reduce((x,y)=>x+y,0)/n;return Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/(n-1));}
+function RollingMetrics({res}){
+  const navpts=res.nav||[];
+  const hasBench=(res.benchmark||[]).length>0;
+  const rf=res.rf_annual!=null?res.rf_annual:0.03;
+  const TD=res.trading_days||252;
+  const [win,setWin]=useState(63);
+  const [metric,setMetric]=useState("sharpe");
+  // daily returns + aligned benchmark returns
+  const dates=navpts.map(p=>p.date);
+  const nv=navpts.map(p=>p.value);
+  const rets=[]; for(let i=1;i<nv.length;i++)rets.push(nv[i]/nv[i-1]-1);
+  const bmap={}; (res.benchmark||[]).forEach(p=>bmap[p.date]=p.value);
+  const bv=dates.map(d=>bmap[d]);
+  const bret=[]; for(let i=1;i<bv.length;i++)bret.push(bv[i]!=null&&bv[i-1]!=null?bv[i]/bv[i-1]-1:null);
+  const rdates=dates.slice(1);
+  const need=(metric==="beta"||metric==="corr");
+  useEffect(()=>{
+    if(!window.Chart)return;
+    const el=document.getElementById("rollchart");if(!el)return;
+    if(el._c)el._c.destroy();
+    const W=win; if(rets.length<W+1){return;}
+    const out=[];
+    for(let i=W-1;i<rets.length;i++){
+      const w=rets.slice(i-W+1,i+1);
+      let val=null;
+      if(metric==="vol")val=_std(w)*Math.sqrt(TD)*100;
+      else if(metric==="ret")val=(w.reduce((a,b)=>a+b,0)/w.length)*TD*100;
+      else if(metric==="sharpe"){const ann=(w.reduce((a,b)=>a+b,0)/w.length)*TD;const vol=_std(w)*Math.sqrt(TD);val=vol>0?(ann-rf)/vol:null;}
+      else if(metric==="dd"){let cum=1,pk=1,mdd=0;for(const r of w){cum*=(1+r);if(cum>pk)pk=cum;const d=(cum-pk)/pk;if(d<mdd)mdd=d;}val=mdd*100;}
+      else if(metric==="beta"||metric==="corr"){
+        const wb=bret.slice(i-W+1,i+1);
+        const pairs=[];for(let k=0;k<w.length;k++)if(wb[k]!=null)pairs.push([w[k],wb[k]]);
+        if(pairs.length>=3){const mp=pairs.reduce((a,x)=>a+x[0],0)/pairs.length,mb=pairs.reduce((a,x)=>a+x[1],0)/pairs.length;
+          let cov=0,vp=0,vb=0;pairs.forEach(([p,b])=>{cov+=(p-mp)*(b-mb);vp+=(p-mp)**2;vb+=(b-mb)**2;});
+          if(metric==="beta")val=vb>0?cov/vb:null; else val=(vp>0&&vb>0)?cov/Math.sqrt(vp*vb):null;}
+      }
+      out.push({x:rdates[i],y:val});
+    }
+    const pct=RM_METRICS.find(m=>m[0]===metric)[2]==="pct";
+    el._c=new Chart(el,{type:"line",data:{labels:out.map(o=>o.x),datasets:[
+      {label:RM_METRICS.find(m=>m[0]===metric)[1]+" ("+win+"d)",data:out.map(o=>o.y),
+        borderColor:"#9666e3",backgroundColor:"rgba(150,102,227,.08)",borderWidth:2,pointRadius:0,pointHoverRadius:3,tension:.2,fill:metric==="dd"}
+    ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>" "+(c.parsed.y==null?"—":c.parsed.y.toFixed(2)+(pct?"%":""))}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#777",font:{size:9},maxTicksLimit:10}},
+        y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:v=>pct?v+"%":v}}}}});
+    return()=>{if(el._c)el._c.destroy();};
+  },[res,win,metric]);
+  if(rets.length<22)return null;   // need at least ~1M of data
+  return(
+    <div style={{marginBottom:"1.5rem"}}>
+      <div className="lbl" style={{margin:"0 0 .4rem"}}>Rolling metrics</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:".9rem",alignItems:"center"}}>
+        <div style={{display:"flex",gap:4,background:"rgba(255,255,255,.04)",padding:4,borderRadius:10}}>
+          {RM_METRICS.map(([k,l])=>{const dis=(k==="beta"||k==="corr")&&!hasBench;return(
+            <button key={k} disabled={dis} onClick={()=>setMetric(k)} title={dis?"Needs a benchmark":""}
+              className={"tab"+(metric===k?" on":"")} style={{fontSize:".74rem",padding:"5px 10px",opacity:dis?.4:1}}>{l}</button>);})}
+        </div>
+        <div style={{flex:1}}></div>
+        <div style={{display:"flex",gap:4,background:"rgba(255,255,255,.04)",padding:4,borderRadius:10}}>
+          {RM_WINDOWS.map(([l,w])=>{const dis=rets.length<w+1;return(
+            <button key={w} disabled={dis} onClick={()=>setWin(w)}
+              className={"tab"+(win===w?" on":"")} style={{fontSize:".74rem",padding:"5px 10px",opacity:dis?.4:1}}>{l}</button>);})}
+        </div>
+      </div>
+      <div className="card" style={{padding:"1.5rem"}}>
+        <div style={{position:"relative",height:300}}><canvas id="rollchart"/></div>
+      </div>
+    </div>
+  );
+}
+
+function PairCorrelation({res}){
+  const hs=res.holdings_series||{};
+  const tickers=Object.keys(hs);
+  const [a,setA]=useState(tickers[0]||"");
+  const [b,setB]=useState(tickers[1]||tickers[0]||"");
+  const [win,setWin]=useState(63);
+  // returns per ticker keyed by date
+  const retMap=t=>{const s=hs[t]||[];const m={};for(let i=1;i<s.length;i++)m[s[i].date]=s[i].value/s[i-1].value-1;return m;};
+  useEffect(()=>{
+    if(!window.Chart)return;
+    const el=document.getElementById("pairchart");if(!el)return;
+    if(el._c)el._c.destroy();
+    if(!a||!b||a===b||!hs[a]||!hs[b])return;
+    const ra=retMap(a), rb=retMap(b);
+    const dates=Object.keys(ra).filter(d=>d in rb).sort();
+    if(dates.length<win+1)return;
+    const A=dates.map(d=>ra[d]), B=dates.map(d=>rb[d]);
+    const out=[];
+    for(let i=win-1;i<dates.length;i++){
+      const wa=A.slice(i-win+1,i+1), wb=B.slice(i-win+1,i+1);
+      const ma=wa.reduce((x,y)=>x+y,0)/wa.length, mb=wb.reduce((x,y)=>x+y,0)/wb.length;
+      let cov=0,va=0,vb=0;for(let k=0;k<wa.length;k++){cov+=(wa[k]-ma)*(wb[k]-mb);va+=(wa[k]-ma)**2;vb+=(wb[k]-mb)**2;}
+      out.push({x:dates[i],y:(va>0&&vb>0)?cov/Math.sqrt(va*vb):null});
+    }
+    el._c=new Chart(el,{type:"line",data:{labels:out.map(o=>o.x),datasets:[
+      {label:`${a} vs ${b} — ${win}d rolling corr`,data:out.map(o=>o.y),
+        borderColor:"#1892f3",backgroundColor:"rgba(24,146,243,.08)",borderWidth:2,pointRadius:0,pointHoverRadius:3,tension:.2}
+    ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{labels:{color:"#bbb",usePointStyle:true,boxWidth:8,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>" "+(c.parsed.y==null?"—":c.parsed.y.toFixed(2))}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#777",font:{size:9},maxTicksLimit:10}},
+        y:{min:-1,max:1,grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10}}}}}});
+    return()=>{if(el._c)el._c.destroy();};
+  },[res,a,b,win]);
+  if(tickers.length<2)return null;
+  const selStyle={background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.12)",borderRadius:8,color:"#fafafa",padding:"6px 10px",fontSize:".82rem"};
+  return(
+    <div style={{marginBottom:"1.5rem"}}>
+      <div className="lbl" style={{margin:"0 0 .4rem"}}>Rolling correlation — pick two holdings</div>
+      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:".9rem"}}>
+        How the correlation between two holdings' daily returns moves over time (−1 to +1).
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:".9rem",alignItems:"center"}}>
+        <select value={a} onChange={e=>setA(e.target.value)} style={selStyle}>{tickers.map(t=><option key={t} value={t} style={{background:"#1a1a1a"}}>{t}</option>)}</select>
+        <span style={{color:"rgba(255,255,255,.4)"}}>vs</span>
+        <select value={b} onChange={e=>setB(e.target.value)} style={selStyle}>{tickers.map(t=><option key={t} value={t} style={{background:"#1a1a1a"}}>{t}</option>)}</select>
+        <div style={{flex:1}}></div>
+        <div style={{display:"flex",gap:4,background:"rgba(255,255,255,.04)",padding:4,borderRadius:10}}>
+          {RM_WINDOWS.map(([l,w])=>(
+            <button key={w} onClick={()=>setWin(w)} className={"tab"+(win===w?" on":"")} style={{fontSize:".74rem",padding:"5px 10px"}}>{l}</button>))}
+        </div>
+      </div>
+      {a===b
+        ? <div className="card" style={{padding:"1.5rem",color:"rgba(255,255,255,.4)",fontSize:".85rem"}}>Pick two different holdings to compare.</div>
+        : <div className="card" style={{padding:"1.5rem"}}><div style={{position:"relative",height:280}}><canvas id="pairchart"/></div></div>}
+    </div>
+  );
+}
+
 function StockPerformance({res}){
   const hs=res.holdings_series||{};
   const tickers=Object.keys(hs);
