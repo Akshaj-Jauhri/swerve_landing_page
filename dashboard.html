@@ -275,10 +275,12 @@ function App(){
         dates.forEach((d,i)=>{ sched[d]={}; body.forEach(r=>{ sched[d][String(r[0]).trim()]=parseFloat(r[i+1])||0; }); });
         setModel("weight");
         const last=dates[dates.length-1];
+        const firstDate=[...dates].sort()[0];             // earliest schedule date
+        setCfg(c=>({...c,start_date:firstDate}));         // auto-set start to first upload date
         const rowsArr=tickers.map(t=>({...emptyRow(),ticker:t,weight:sched[last][t]}));
         applyUpload(rowsArr, sched, null, {t:"ok",m: dates.length>1
-          ? `Loaded a weight schedule — ${tickers.length} tickers × ${dates.length} dates (${dates[0]} → ${last}), daily-rebalanced.`
-          : `Loaded ${tickers.length} weights as of ${last}.`});
+          ? `Loaded a weight schedule — ${tickers.length} tickers × ${dates.length} dates (${dates[0]} → ${last}). Start date set to ${firstDate}.`
+          : `Loaded ${tickers.length} weights as of ${last}. Start date set to ${firstDate}.`});
         return;
       }
       // ── single weight/quantity column ──
