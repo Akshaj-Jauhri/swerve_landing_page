@@ -797,6 +797,7 @@ function Results({res,cfg,model,lastReq}){
       </div>
 
       <Analytics res={res} model={model} sym={sym}/>
+      <Income res={res} sym={sym}/>
       <StockPerformance res={res}/>
       <RollingMetrics res={res}/>
       <CorrelationMatrix res={res}/>
@@ -1154,6 +1155,55 @@ function PairCorrelation({res}){
       {a===b
         ? <div className="card" style={{padding:"1.5rem",color:"rgba(255,255,255,.4)",fontSize:".85rem"}}>Pick two different holdings to compare.</div>
         : <div className="card" style={{padding:"1.5rem"}}><div style={{position:"relative",height:280}}><canvas id="pairchart"/></div></div>}
+    </div>
+  );
+}
+
+function Income({res,sym}){
+  const inc=res.income;
+  const monthly=(inc&&inc.monthly)||[];
+  useEffect(()=>{
+    if(!window.Chart)return;
+    const el=document.getElementById("incomechart");if(!el)return;
+    if(el._c)el._c.destroy();
+    if(!monthly.length)return;
+    const money=v=>sym+Number(v).toLocaleString(undefined,{maximumFractionDigits:0});
+    el._c=new Chart(el,{type:"bar",data:{labels:monthly.map(p=>p.month),datasets:[
+      {label:"Dividend income",data:monthly.map(p=>p.amount),backgroundColor:"#22c55e",borderRadius:4}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" "+money(c.parsed.y)}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#777",font:{size:9}}},
+        y:{grid:{color:"rgba(255,255,255,.05)"},ticks:{color:"#777",font:{size:10},callback:v=>money(v)}}}}});
+    return()=>{if(el._c)el._c.destroy();};
+  },[res]);
+  if(!inc||!(inc.projected_annual>0||inc.ttm_income>0))return null;
+  const money=v=>(v==null?"—":sym+Number(v).toLocaleString(undefined,{maximumFractionDigits:0}));
+  return(
+    <div style={{marginBottom:"1.5rem"}}>
+      <div className="lbl" style={{margin:"0 0 .4rem"}}>Dividend income</div>
+      <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1rem"}}>
+        Based on trailing-12-month dividends at current holdings. Gross of withholding tax.
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:"1.25rem"}}>
+        <Kpi k="Projected annual income" v={money(inc.projected_annual)} cls="pos"/>
+        <Kpi k="Portfolio yield" v={inc.portfolio_yield!=null?inc.portfolio_yield.toFixed(2)+"%":"—"}/>
+        <Kpi k="Yield on cost" v={inc.yield_on_cost!=null?inc.yield_on_cost.toFixed(2)+"%":"—"}/>
+        <Kpi k="Income (TTM)" v={money(inc.ttm_income)}/>
+      </div>
+      <div className="rgrid" style={{display:"grid",gridTemplateColumns:"1.4fr 1fr",gap:"1.5rem"}}>
+        <div className="card" style={{padding:"1.5rem"}}>
+          <div className="lbl" style={{marginBottom:".8rem"}}>Income by month (last 12m)</div>
+          <div style={{position:"relative",height:240}}><canvas id="incomechart"/></div>
+        </div>
+        <div className="card" style={{padding:"1.5rem",overflowX:"auto"}}>
+          <div className="lbl" style={{marginBottom:"1rem"}}>By holding</div>
+          <table className="dt"><thead><tr><th>Ticker</th><th>Income (TTM)</th><th>Yield</th></tr></thead>
+            <tbody>{(inc.by_holding||[]).map((h,i)=>(
+              <tr key={i}><td>{h.ticker}</td><td>{money(h.ttm_income)}</td>
+                <td>{h.yield!=null?h.yield.toFixed(2)+"%":"—"}</td></tr>))}
+            </tbody></table>
+        </div>
+      </div>
     </div>
   );
 }
