@@ -415,7 +415,7 @@ function FadeUp({children,delay=0,className="",style={}}){
 }
 
 /* ── Lightweight cross-page nav (links back to the SPA via hash routes) ── */
-const NAV_LINKS=[["Home","home"],["Research","research"],["Calendar","calendar"],["Dashboard","portfolio"],["Technical Analysis","ta"],/* ["Graph","graph"], -- graph paused, coming soon */["Wallet","wallet"],["Contact","contact"]];
+const NAV_LINKS=[["Home","home"],["Research","research"],["Calendar","calendar"],["Dashboard","portfolio"],["Technical Analysis","ta"],/* ["Graph","graph"], -- graph paused, coming soon */ /* ["Wallet","wallet"], -- wallet paused for now */["Contact","contact"]];
 function Nav(){
   const[open,setOpen]=useState(false);
   const[sc,setSc]=useState(false);

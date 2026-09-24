@@ -91,7 +91,7 @@ body{padding-top:56px}
       <a href="/calendar">Calendar</a>
       <a href="/dashboard" class="active">Dashboard</a>
       <a href="/technical-analysis">Technical Analysis</a>
-      <a href="/wallet">Wallet</a>
+      <!-- <a href="/wallet">Wallet</a> -- wallet paused -->
       <a href="/contact">Contact</a>
       <a class="loginbtn" id="db-login" href="/profile">Log in</a>
     </div>
@@ -103,7 +103,7 @@ body{padding-top:56px}
     <a href="/calendar">Calendar</a>
     <a href="/dashboard">Dashboard</a>
     <a href="/technical-analysis">Technical Analysis</a>
-    <a href="/wallet">Wallet</a>
+    <!-- <a href="/wallet">Wallet</a> -- wallet paused -->
     <a href="/contact">Contact</a>
     <a href="/profile" id="db-login-m">Log in</a>
   </div>
@@ -333,7 +333,10 @@ function App(){
 
   async function compute(){
     const f=filled();if(!f.length){setMsg({t:"err",m:"Add at least one holding."});return;}
-    setBusy(true);setMsg(null);setRes(null);
+    const bad=f.filter(r=>!/^[A-Za-z0-9.\-^=:&]+$/.test(r.ticker.trim()));
+    if(bad.length){setMsg({t:"err",m:"These don't look like valid tickers: "+bad.map(r=>r.ticker.trim()).join(", ")+". Use Yahoo format (e.g. AAPL, RELIANCE.NS, 9988.HK)."});return;}
+    setBusy(true);setMsg({t:"busy",m:"Computing… the first run can take up to a minute while prices load."});setRes(null);
+    const slow=setTimeout(()=>setMsg({t:"busy",m:"Still working — the pricing service may be waking up. Hang tight…"}),9000);
     const holdings=f.map(r=>{const h={ticker:r.ticker.trim(),name:r.name||undefined};
       if(model==="quantity"){h.quantity=parseFloat(r.quantity)||0;if(r.purchase_price)h.purchase_price=parseFloat(r.purchase_price);}
       else{h.weight=parseFloat(r.weight)||0;}return h;});
@@ -345,10 +348,11 @@ function App(){
     try{
       const r=await fetch(API+"/compute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const j=await r.json();
-      if(!r.ok){setMsg({t:"err",m:j.detail||"Compute failed."});setBusy(false);return;}
+      clearTimeout(slow);
+      if(!r.ok){setMsg({t:"err",m:(j&&j.detail)||"Compute failed. Check your tickers and try again."});setBusy(false);return;}
       setRes(j);
-      if(j.warnings&&j.warnings.length)setMsg({t:"err",m:j.warnings.join(" · ")});
-    }catch(e){setMsg({t:"err",m:"Compute failed — the pricing service didn't respond. Please try again in a moment."});}
+      setMsg(j.warnings&&j.warnings.length?{t:"warn",m:j.warnings.join(" · ")}:{t:"ok",m:"Done."});
+    }catch(e){clearTimeout(slow);setMsg({t:"err",m:"Couldn't reach the pricing service — it may be starting up. Wait a moment and try again."});}
     setBusy(false);
   }
 
@@ -558,7 +562,7 @@ function App(){
           <button className="gbtn gbtn-ghost" onClick={resolve} disabled={busy}>Resolve tickers</button>
           <button className="gbtn" onClick={compute} disabled={busy}>{busy?"Computing…":"Compute NAV"}</button>
           <button className="gbtn gbtn-ghost" onClick={savePortfolio} disabled={busy} title={user?"Save to your account":"Sign in to save"}>Save</button>
-          {msg&&<span style={{fontSize:".84rem",color:msg.t==="err"?"#f87171":"#4ade80"}}>{msg.m}</span>}
+          {msg&&<span style={{fontSize:".84rem",color:msg.t==="err"?"#f87171":msg.t==="warn"?"#fbbf24":msg.t==="busy"?"rgba(255,255,255,.6)":"#4ade80"}}>{msg.m}</span>}
         </div>
       </div>
 
