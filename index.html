@@ -2027,6 +2027,9 @@ function loadPdfJs(){
 }
 
 const reportSlug=r=>String(r.title||"report").toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")||String(r.id);
+/* Reports that have a full web-page version. Key = reportSlug(title). A "web_url" column on the row also works. */
+const WEB_VERSIONS={"hyperscaler-overbuild-on-premise-slm-substitution-and-the-anthropic-case-study":"/report-hyperscaler-overbuild"};
+const webVersionUrl=r=>r.web_url||WEB_VERSIONS[reportSlug(r)]||null;
 const reportLink=r=>window.location.origin+"/research/"+reportSlug(r);
 
 function PdfPage({pdf,num,w,h,cssW}){
@@ -2444,12 +2447,17 @@ function Research(){
                             padding:"1rem 1.75rem",
                             borderTop:"1px solid rgba(255,255,255,.05)",
                             background:"rgba(255,255,255,.015)",
-                            display:"flex",alignItems:"center",justifyContent:"space-between",
+                            display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,
                           }}>
-                            <span style={{fontSize:".7rem",color:"rgba(255,255,255,.2)",fontWeight:500}}>
+                            <span style={{fontSize:".7rem",color:"rgba(255,255,255,.3)",fontWeight:500,flexBasis:"100%"}}>
                               Research Report
                             </span>
-                            <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                            <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-start",flexBasis:"100%"}}>
+                            {webVersionUrl(r)&&<a href={webVersionUrl(r)} className="hov-scale-btn"
+                              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 16px",borderRadius:9,fontSize:".8rem",fontWeight:700,textDecoration:"none",
+                                background:`linear-gradient(135deg,${P}33,${B}33)`,border:`1px solid ${P}88`,color:"#fff"}}>
+                              Open web version →
+                            </a>}
                             {r.file_url&&r.file_url!=="#"&&<button onClick={()=>openReader(r)} className="hov-scale-btn"
                               style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 16px",borderRadius:9,fontSize:".8rem",fontWeight:700,cursor:"pointer",
                                 background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.18)",color:"#fff"}}>
