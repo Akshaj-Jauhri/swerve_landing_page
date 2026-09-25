@@ -13,7 +13,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
@@ -2852,27 +2851,14 @@ function BlogArticle({slug,goHub,openPost,go}){
 /* ════════════════════════════════════════
    CONTACT
 ════════════════════════════════════════*/
-/* ── EmailJS config ─────────────────────────────────────────────────────────
-   1. Sign up free at https://www.emailjs.com
-   2. Add an Email Service (Gmail recommended) → copy the Service ID below
-   3. Create an Email Template with these variables:
-        {{from_name}}  {{from_email}}  {{company}}  {{message}}  {{to_email}}
-      Set "To Email" in the template to: akshaj@swerve.wtf
-      Copy the Template ID below
-   4. Go to Account → API Keys → copy your Public Key below
-──────────────────────────────────────────────────────────────────────────── */
-const EMAILJS_SERVICE_ID  = "service_xdbav8t";   // e.g. "service_abc123"
-const EMAILJS_TEMPLATE_ID = "template_95jeiss";  // e.g. "template_xyz789"
-const EMAILJS_PUBLIC_KEY  = "yehkGv9VK19-aVcJt";   // e.g. "aBcDeFgHiJkLmNoP"
-
 /* Team contact cards (Contact page). Add each person's number in "phone", e.g. "+91 98765 43210" — the Phone row appears once it is filled in. */
 const CONTACT_TEAM=[
   {name:"Akshaj Jauhri",role:"Co-Founder",init:"AJ",bg:"linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)",
-    email:"akshaj@swerve.wtf",phone:"+919653148458",linkedin:"https://linkedin.com/in/akshaj-jauhri"},
+    email:"akshaj@swerve.wtf",phone:"",linkedin:"https://linkedin.com/in/akshaj-jauhri"},
   {name:"Ninad Deshmukh",role:"Co-Founder",init:"ND",bg:"linear-gradient(135deg,#0d0d1a,#1a0a2e,#2d1b69)",
-    email:"ninad_deshmukh@swerve.wtf",phone:"+918879462501",linkedin:"https://www.linkedin.com/in/ninad-deshmukh-40425b188/"},
+    email:"ninad_deshmukh@swerve.wtf",phone:"",linkedin:"https://www.linkedin.com/in/ninad-deshmukh-40425b188/"},
   {name:"Siddharth Nagepalli",role:"Co-Founder",init:"SN",bg:"linear-gradient(135deg,#0a1628,#0d2137,#0f3a5c)",
-    email:"siddharthnagepalli@swerve.wtf",phone:"+919773860566",linkedin:"https://www.linkedin.com/in/siddharth-nagepalli-345257231/"},
+    email:"siddharthnagepalli@swerve.wtf",phone:"",linkedin:"https://www.linkedin.com/in/siddharth-nagepalli-345257231/"},
 ];
 function TeamContact({mob}){
   const row=(label,val,href,ext)=>(
@@ -2924,7 +2910,7 @@ function TeamContact({mob}){
 
 function Contact(){
   const mob=useMobile();
-  const[form,setForm]=useState({name:"",email:"",company:"",message:""});
+  const[form,setForm]=useState({name:"",email:"",company:"",message:"",website:""});
   const[errs,setErrs]=useState({});
   const[done,setDone]=useState(false);
   const[busy,setBusy]=useState(false);
@@ -2945,22 +2931,18 @@ function Contact(){
     if(Object.keys(v).length){setErrs(v);return;}
     setErrs({});setSendErr(null);setBusy(true);
     try{
-      await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        {
-          name:    form.name,
-          email:   form.email,
-          company: form.company||"Not provided",
-          message: form.message,
-          time:    new Date().toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"}),
-        },
-        EMAILJS_PUBLIC_KEY
-      );
+      if(form.website){setBusy(false);setDone(true);return;}   // honeypot: real people never fill this hidden field
+      const{error}=await sb.from("contact_messages").insert([{
+        name:    form.name.trim(),
+        email:   form.email.trim(),
+        company: form.company.trim()||null,
+        message: form.message.trim(),
+      }]);
+      if(error)throw error;
       setBusy(false);setDone(true);
     }catch(err){
-      console.error("EmailJS error:",err);
-      setSendErr("Something went wrong — please try emailing us directly at akshaj@swerve.wtf");
+      console.error("Contact form error:",err);
+      setSendErr("Something went wrong sending your message — please email us directly at akshaj@swerve.wtf");
       setBusy(false);
     }
   };
@@ -3058,6 +3040,9 @@ function Contact(){
                     style={{resize:"none"}}/>
                   {errs.message&&<p style={{fontSize:".66rem",color:"#ef4444",marginTop:3}}>{errs.message}</p>}
                 </div>
+                <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={form.website}
+                  onChange={e=>setForm({...form,website:e.target.value})}
+                  style={{position:"absolute",left:"-9999px",width:1,height:1,opacity:0}}/>
                 <GlowBtn style={{padding:"12px",width:"100%",fontSize:".88rem"}}>
                   {busy?"Sending…":"Send Message"}
                 </GlowBtn>
